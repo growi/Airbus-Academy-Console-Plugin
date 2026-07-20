@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: academy-guidance
+  namespace: academy-console-plugin
+data:
+  nginx.conf: |
+    error_log /dev/stdout info;
+    events {}
+    http {
+      access_log /dev/stdout;
+      include /etc/nginx/mime.types;
+      default_type application/octet-stream;
+      server {
+        listen 9443 ssl;
+        ssl_certificate /var/cert/tls.crt;
+        ssl_certificate_key /var/cert/tls.key;
+        root /usr/share/nginx/html;
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: academy-guidance
+  namespace: academy-console-plugin
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: academy-guidance-serving-cert
+spec:
+  selector:
+    app: academy-guidance
+  ports:
+    - name: https
+      port: 9443
+      targetPort: 9443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: academy-guidance
+  namespace: academy-console-plugin
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"academy-guidance:latest","namespace":"academy-console-plugin"},"fieldPath":"spec.template.spec.containers[?(@.name==\"plugin\")].image"}]
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: academy-guidance
+  template:
+    metadata:
+      labels:
+        app: academy-guidance
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: plugin
+          image: image-registry.openshift-image-registry.svc:5000/academy-console-plugin/academy-guidance:latest
+          imagePullPolicy: Always
+          ports:
+            - name: https
+              containerPort: 9443
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/cert
+              readOnly: true
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+      volumes:
+        - name: serving-cert
+          secret:
+            secretName: academy-guidance-serving-cert
+        - name: nginx-config
+          configMap:
+            name: academy-guidance
+---
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: academy-guidance
+spec:
+  displayName: Academy Guidance
+  backend:
+    type: Service
+    service:
+      name: academy-guidance
+      namespace: academy-console-plugin
+      port: 9443
+      basePath: /

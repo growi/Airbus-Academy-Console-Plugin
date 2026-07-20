@@ -1,0 +1,35 @@
+[
+  {
+    "type": "console.context-provider",
+    "properties": {
+      "provider": { "$codeRef": "GuidanceContext.GuidanceProvider" },
+      "useValueHook": { "$codeRef": "GuidanceContext.useGuidanceValuesForContext" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/academy/guidance",
+      "component": { "$codeRef": "GuidancePage" }
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/academy/lessons/:moduleId/start",
+      "component": { "$codeRef": "LessonLauncherPage" }
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "academy-guidance",
+      "name": "Academy guidance",
+      "href": "/academy/guidance",
+      "perspective": "admin",
+      "section": "home"
+    }
+  }
+]

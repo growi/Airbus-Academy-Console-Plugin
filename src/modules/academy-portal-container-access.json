@@ -1,0 +1,44 @@
+{
+  "$schema": "./module.schema.json",
+  "id": "academy-portal-container-access",
+  "title": "Academy portal container access",
+  "description": "Learn how to locate a known Academy workload and open its container terminal.",
+  "completionText": "Lesson complete: the Academy database pod terminal is open.",
+  "steps": [
+    {
+      "id": "open-workloads",
+      "title": "Open Workloads",
+      "description": "Expand Workloads in the navigation. Workload resources such as Pods are grouped here so operators can inspect running application components.",
+      "target": { "type": "quickStartId", "value": "qs-nav-workloads" },
+      "completeWhen": { "type": "click" }
+    },
+    {
+      "id": "open-pods",
+      "title": "Open Pods",
+      "description": "Select Pods to see the workload instances running in the current project. The project is already scoped to dcs-academy-portal.",
+      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/core~v1~Pod" },
+      "completeWhen": { "type": "route", "value": "/k8s/ns/dcs-academy-portal/core~v1~Pod" }
+    },
+    {
+      "id": "open-pod",
+      "title": "Open the Academy database pod",
+      "description": "Open dcs-academy-portal-db-1. A pod details page brings status, configuration, logs, events, and container access together.",
+      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1" },
+      "completeWhen": { "type": "route", "value": "/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1" }
+    },
+    {
+      "id": "open-logs",
+      "title": "Inspect the logs",
+      "description": "Open Logs before connecting to the container. Logs are normally the safest first source of evidence when diagnosing a running workload.",
+      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1/logs" },
+      "completeWhen": { "type": "route", "value": "/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1/logs" }
+    },
+    {
+      "id": "open-terminal",
+      "title": "Open the container terminal",
+      "description": "Open Terminal to start an interactive session in the selected pod. In real environments, use terminal access carefully and prefer read-only inspection commands.",
+      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1/terminal" },
+      "completeWhen": { "type": "route", "value": "/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1/terminal" }
+    }
+  ]
+}

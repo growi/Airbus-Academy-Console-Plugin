@@ -1,0 +1,23 @@
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: academy-guidance
+  namespace: academy-console-plugin
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: academy-guidance
+  namespace: academy-console-plugin
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: academy-guidance:latest
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers: []
