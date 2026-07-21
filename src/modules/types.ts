@@ -3,7 +3,7 @@ export type TrainingTarget =
   | { type: 'href'; value: string };
 
 export type CompletionCondition =
-  | { type: 'click' }
+  | { type: 'targetAttribute'; attribute: string; value: string }
   | { type: 'route'; value: string };
 
 export type TrainingStep = {

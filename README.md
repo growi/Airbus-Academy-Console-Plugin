@@ -55,7 +55,9 @@ Minimal module example:
         "value": "qs-nav-workloads"
       },
       "completeWhen": {
-        "type": "click"
+        "type": "targetAttribute",
+        "attribute": "aria-expanded",
+        "value": "true"
       }
     },
     {
@@ -93,7 +95,9 @@ Supported targets:
 
 Supported completion conditions:
 
-- `click` advances when the learner clicks the highlighted target.
+- `targetAttribute` advances only when the highlighted target has the configured attribute value.
+  Use this for controls such as expandable navigation sections, where a click alone does not prove
+  that the required state was reached.
 - `route` advances when the browser reaches the configured exact path.
 
 Do not put CSS selectors or executable behavior in external links. The launcher accepts only a

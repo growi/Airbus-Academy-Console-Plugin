@@ -10,7 +10,11 @@
       "title": "Open Workloads",
       "description": "Expand Workloads in the navigation. Workload resources such as Pods are grouped here so operators can inspect running application components.",
       "target": { "type": "quickStartId", "value": "qs-nav-workloads" },
-      "completeWhen": { "type": "click" }
+      "completeWhen": {
+        "type": "targetAttribute",
+        "attribute": "aria-expanded",
+        "value": "true"
+      }
     },
     {
       "id": "open-pods",

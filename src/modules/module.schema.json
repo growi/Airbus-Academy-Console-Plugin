@@ -49,8 +49,12 @@
               {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["type"],
-                "properties": { "type": { "const": "click" } }
+                "required": ["type", "attribute", "value"],
+                "properties": {
+                  "type": { "const": "targetAttribute" },
+                  "attribute": { "type": "string", "minLength": 1 },
+                  "value": { "type": "string" }
+                }
               },
               {
                 "type": "object",

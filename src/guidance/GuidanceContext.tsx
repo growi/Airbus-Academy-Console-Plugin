@@ -171,15 +171,31 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   }, [active, currentStep, location.pathname]);
 
   useEffect(() => {
-    if (!active || !currentStep || currentStep.completeWhen.type !== 'click') return undefined;
+    if (!active || !currentStep || currentStep.completeWhen.type !== 'targetAttribute') {
+      return undefined;
+    }
+    const completionCondition = currentStep.completeWhen;
     const targetSelector = selectorForTarget(currentStep.target);
-    const advanceFromClick = (event: MouseEvent) => {
-      const clickedElement = event.target instanceof Element ? event.target : null;
-      if (!clickedElement?.closest(targetSelector)) return;
-      setStep((current) => current + 1);
+    let completedStep = false;
+    const verifyDesiredState = () => {
+      const target = document.querySelector(targetSelector);
+      const desiredStateReached =
+        target?.getAttribute(completionCondition.attribute) === completionCondition.value;
+      if (!completedStep && desiredStateReached) {
+        completedStep = true;
+        setStep((current) => current + 1);
+      }
     };
-    document.addEventListener('click', advanceFromClick, true);
-    return () => document.removeEventListener('click', advanceFromClick, true);
+
+    const observer = new MutationObserver(verifyDesiredState);
+    observer.observe(document.body, {
+      attributeFilter: [completionCondition.attribute],
+      attributes: true,
+      childList: true,
+      subtree: true
+    });
+    verifyDesiredState();
+    return () => observer.disconnect();
   }, [active, currentStep]);
 
   useEffect(() => {
