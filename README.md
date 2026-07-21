@@ -218,6 +218,35 @@ oc patch console.operator.openshift.io cluster --type=merge \
 After the console rollout completes, refresh the browser and open
 **Home → Academy guidance**.
 
+## End-to-end tests
+
+`tests/e2e/` is an isolated Playwright project that exercises the complete lesson against a live
+OpenShift console. It verifies desired-state rollback for the Workloads menu, navigation through
+Pods, pod details, Logs, and Terminal, lesson completion and stopping, and guards against excessive
+DOM mutation or long browser tasks.
+
+Install the test dependencies and managed Firefox once:
+
+```bash
+cd tests/e2e
+npm ci
+npx playwright install firefox
+```
+
+Run the suite with a test account that can read the Academy pod and open its terminal:
+
+```bash
+CONSOLE_URL='https://console-openshift-console.apps.example.com' \
+CONSOLE_USERNAME='kubeadmin' \
+CONSOLE_PASSWORD='<password>' \
+npm test
+```
+
+`CONSOLE_USERNAME` defaults to `kubeadmin`. Use `npm run test:headed` for an interactive browser.
+The suite accepts the cluster's development certificate, but Firefox may still report expected
+CRC WebSocket connection errors; unexpected console errors and all uncaught page errors fail the
+test.
+
 ## Remove
 
 Disable the plugin before deleting its backend:
