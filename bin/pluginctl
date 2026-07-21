@@ -75,6 +75,7 @@ prepare_target() {
   cp "${target_path}/package.json" "${target_path}/package-lock.json" "${destination}/"
   cp -R "${ROOT}/src/." "${destination}/src/"
   cp "${target_path}/navigation.ts" "${destination}/src/platform/navigation.ts"
+  cp "${target_path}/routes.ts" "${destination}/src/platform/routes.ts"
 
   printf 'Prepared %s for OpenShift %s at %s\n' \
     "${target}" "${OPENSHIFT_RANGE}" "${destination}"

@@ -18,6 +18,7 @@ import { useLocation } from 'react-router';
 import { defaultTrainingModule, getTrainingModule } from '../modules/catalog';
 import type { TrainingModule, TrainingStep, TrainingTarget } from '../modules/types';
 import { useConsoleNavigation } from '../platform/navigation';
+import { resolveConsolePath, resolveConsoleTargetPath } from '../platform/routes';
 import './guidance.css';
 
 const NAMESPACE = 'dcs-academy-portal';
@@ -93,7 +94,7 @@ const selectorForTarget = (target?: TrainingTarget) => {
   if (target.type === 'quickStartId') {
     return `[data-quickstart-id="${target.value}"]`;
   }
-  return `a[href="${target.value}"]`;
+  return `a[href="${resolveConsoleTargetPath(target.value)}"]`;
 };
 
 const loadStoredLesson = () => {
@@ -128,7 +129,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   const currentStep = activeModule?.steps[step];
   const completed = Boolean(active && activeModule && step >= activeModule.steps.length);
 
-  const openPage = useCallback((path: string) => navigate(path), [navigate]);
+  const openPage = useCallback((path: string) => navigate(resolveConsolePath(path)), [navigate]);
   const highlight = useCallback(
     (targetId: string) => setHighlightId(`[data-quickstart-id="${targetId}"]`),
     []
@@ -166,10 +167,13 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
 
   useEffect(() => {
     if (!active || !currentStep || currentStep.completeWhen.type !== 'route') return;
-    if (location.pathname === currentStep.completeWhen.value) {
+    const canonicalPath = resolveConsolePath(currentStep.completeWhen.value);
+    const targetPath = resolveConsoleTargetPath(currentStep.completeWhen.value);
+    if (location.pathname === canonicalPath || location.pathname === targetPath) {
+      if (location.pathname !== canonicalPath) navigate(canonicalPath);
       setStep((current) => current + 1);
     }
-  }, [active, currentStep, location.pathname]);
+  }, [active, currentStep, location.pathname, navigate]);
 
   useEffect(() => {
     if (!active || !currentStep || currentStep.completeWhen.type !== 'targetAttribute') {
