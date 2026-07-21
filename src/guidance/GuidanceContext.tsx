@@ -13,10 +13,11 @@ import {
   useMemo,
   useState
 } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { useLocation } from 'react-router';
 
 import { defaultTrainingModule, getTrainingModule } from '../modules/catalog';
 import type { TrainingModule, TrainingStep, TrainingTarget } from '../modules/types';
+import { useConsoleNavigation } from '../platform/navigation';
 import './guidance.css';
 
 const NAMESPACE = 'dcs-academy-portal';
@@ -110,7 +111,7 @@ const loadStoredLesson = () => {
 
 export const useGuidanceValuesForContext = (): GuidanceValue => {
   const location = useLocation();
-  const navigate = useNavigate();
+  const navigate = useConsoleNavigation();
   const [perspective] = useActivePerspective();
   const [storedLesson] = useState(loadStoredLesson);
   const [active, setActive] = useState(Boolean(storedLesson));

@@ -8,7 +8,7 @@ import { useGuidance } from '../guidance/GuidanceContext';
 import { getTrainingModule } from '../modules/catalog';
 
 const LessonLauncherPage: FC = () => {
-  const { moduleId = '' } = useParams();
+  const { moduleId = '' } = useParams() as { moduleId?: string };
   const guidance = useGuidance();
   const module = getTrainingModule(moduleId);
 

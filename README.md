@@ -1,6 +1,6 @@
 # Academy Guidance Console Plugin PoC
 
-This is an OpenShift 4.22 dynamic console plugin that demonstrates guidance behavior
+This is a multi-target OpenShift dynamic console plugin that demonstrates guidance behavior
 which cannot be expressed by a native `ConsoleQuickStart`:
 
 - unconditional highlighting of console elements carrying `data-quickstart-id`;
@@ -33,7 +33,8 @@ URLs.
 4. Define the ordered `steps`. Each description should tell the learner what to do, why the
    action matters, and how to recognize or perform it.
 5. Import and register the module in `src/modules/catalog.ts`.
-6. Run `npm run typecheck` and `npm run build`.
+6. Build every supported target with `bin/pluginctl build ocp-4.20` and
+   `bin/pluginctl build ocp-4.22`.
 7. Deploy the new image and test both the guidance page and external launch URL.
 
 Minimal module example:
@@ -126,6 +127,27 @@ The implementation does not fork or patch the OpenShift console. A
 the user navigates. The plugin is independently built, served, registered through a
 `ConsolePlugin`, and enabled in `Console.operator.openshift.io/cluster`.
 
+## Target structure
+
+The lesson engine, module catalog, and UI are shared under `src/`. Version-specific dependency
+manifests and the small router adapter live under `targets/<target>/`. Deployment overlays under
+`deploy/overlays/<target>/` select an explicitly versioned image tag for the same target.
+
+| Target | OpenShift versions | React/router generation | Image tag |
+| --- | --- | --- | --- |
+| `ocp-4.20` | 4.20-4.21 | React 17 / Router 5 | `academy-guidance:0.1.0-ocp4.20` |
+| `ocp-4.22` | 4.22-4.23 | React 18 / Router 7 | `academy-guidance:0.1.0-ocp4.22` |
+
+`bin/pluginctl` creates an ignored `.build/<target>/` directory by combining the shared source,
+the selected target adapter, and that target's locked dependency manifests. This keeps generated
+build contexts and installed dependencies out of the source tree.
+
+List the supported targets and their image tags:
+
+```bash
+bin/pluginctl list
+```
+
 ## Compatibility boundary
 
 Navigation and Kubernetes state use supported console SDK APIs. Unconditional highlighting
@@ -134,27 +156,45 @@ programmatic spotlight API. That part is intentionally isolated in `GuidanceCont
 and must be regression-tested for every OpenShift minor release. It does not modify core
 console code, but it is coupled to rendered console markup.
 
-The PoC pins `@openshift-console/dynamic-plugin-sdk` to `4.22-latest` and declares a
-minimum console plugin API of 4.22.
+Each target pins the matching `@openshift-console/dynamic-plugin-sdk` generation and declares a
+bounded console plugin API range. Add a new target only when a console release requires different
+dependencies or adapter behavior; keep lesson functionality in shared source.
 
 ## Build and deploy
 
-From the repository root:
+Build either target from the repository root. The command creates a fresh isolated context, runs
+`npm ci`, type checking, and the production build:
 
 ```bash
-npm install
-npm run typecheck
-npm run build
-
-oc apply -k deploy
-oc start-build academy-guidance \
-  -n academy-console-plugin --from-dir=. --follow
-oc rollout status deployment/academy-guidance \
-  -n academy-console-plugin --timeout=5m
+bin/pluginctl build ocp-4.20
+bin/pluginctl build ocp-4.22
 ```
 
-The deployment has an ImageStream trigger, so a successful build automatically rolls out
-the newly published image.
+Build explicitly tagged local container images with Podman:
+
+```bash
+bin/pluginctl container-build ocp-4.20
+bin/pluginctl container-build ocp-4.22
+```
+
+Inspect the generated cluster resources without applying them:
+
+```bash
+bin/pluginctl render ocp-4.20
+bin/pluginctl render ocp-4.22
+```
+
+Deploy the one target matching the cluster version:
+
+```bash
+bin/pluginctl deploy ocp-4.20
+# or
+bin/pluginctl deploy ocp-4.22
+```
+
+The deploy command applies the target overlay, assembles its isolated binary build context, starts
+the OpenShift build, and waits for the deployment rollout. The deployment has an ImageStream
+trigger, so the explicitly tagged successful build automatically rolls out.
 
 Enable the plugin without replacing any existing plugins:
 
@@ -185,7 +225,9 @@ Disable the plugin before deleting its backend:
 ```bash
 oc patch console.operator.openshift.io cluster --type=json \
   -p='[{"op":"remove","path":"/spec/plugins/0"}]'
-oc delete -k deploy
+oc delete -k deploy/overlays/ocp-4.20
+# or
+oc delete -k deploy/overlays/ocp-4.22
 ```
 
 The removal command assumes the PoC is the first enabled plugin. For a shared cluster,
