@@ -204,6 +204,37 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   }, [active, currentStep]);
 
   useEffect(() => {
+    if (!active || !activeModule || step === 0) return undefined;
+    const previousStep = activeModule.steps[step - 1];
+    if (previousStep.completeWhen.type !== 'targetAttribute') return undefined;
+
+    const previousCondition = previousStep.completeWhen;
+    const currentTargetSelector = selectorForTarget(currentStep?.target);
+    const previousTargetSelector = selectorForTarget(previousStep.target);
+    let rolledBack = false;
+    const verifyPrerequisite = () => {
+      if (rolledBack || document.querySelector(currentTargetSelector)) return;
+      const previousTarget = document.querySelector(previousTargetSelector);
+      const prerequisiteStillMet =
+        previousTarget?.getAttribute(previousCondition.attribute) === previousCondition.value;
+      if (!prerequisiteStillMet) {
+        rolledBack = true;
+        setStep((current) => (current === step ? current - 1 : current));
+      }
+    };
+
+    const observer = new MutationObserver(verifyPrerequisite);
+    observer.observe(document.body, {
+      attributeFilter: [previousCondition.attribute],
+      attributes: true,
+      childList: true,
+      subtree: true
+    });
+    verifyPrerequisite();
+    return () => observer.disconnect();
+  }, [active, activeModule, currentStep, step]);
+
+  useEffect(() => {
     if (!active || !activeModule) return;
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ moduleId: activeModule.id, step }));
   }, [active, activeModule, step]);
