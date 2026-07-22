@@ -56,3 +56,10 @@ export type TrainingModule = {
   context: TrainingContext;
   steps: TrainingStep[];
 };
+
+export type TrainingMode = 'assisted' | 'continue' | 'timed';
+
+export type TrainingModuleCatalogEntry = {
+  mode: TrainingMode;
+  module: TrainingModule;
+};

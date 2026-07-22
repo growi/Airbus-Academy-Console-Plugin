@@ -2,7 +2,7 @@ import academyPortalContainerAccess from './academy-portal-container-access.json
 import academyPortalContainerAccessManual from './academy-portal-container-access-manual.json';
 import academyPortalContainerAccessTimed from './academy-portal-container-access-timed.json';
 import academyPortalNamespaceFilter from './academy-portal-namespace-filter.json';
-import type { TrainingModule } from './types';
+import type { TrainingMode, TrainingModule, TrainingModuleCatalogEntry } from './types';
 import { createPresentationVariant } from './variants';
 
 const namespaceFilterModule = academyPortalNamespaceFilter as TrainingModule;
@@ -35,6 +35,15 @@ const modules = [
 ];
 
 export const trainingModules = Object.freeze(modules);
+
+const getTrainingMode = (module: TrainingModule): TrainingMode => {
+  const initiator = module.steps[0]?.complete.presentation?.initiator;
+  return initiator === 'timer' ? 'timed' : initiator ?? 'assisted';
+};
+
+export const trainingModuleCatalog: readonly TrainingModuleCatalogEntry[] = Object.freeze(
+  trainingModules.map((module) => ({ module, mode: getTrainingMode(module) }))
+);
 
 export const defaultTrainingModule = trainingModules[0];
 

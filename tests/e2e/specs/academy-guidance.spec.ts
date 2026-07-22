@@ -65,6 +65,35 @@ const expectSpotlightOn = async (spotlight: Locator, target: Locator) => {
   }).toBe(true);
 };
 
+test('searches and filters the registered tour catalog', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/academy/guidance');
+
+  const tours = page.getByRole('list', { name: 'Academy tours' });
+  await expect(tours.getByRole('listitem')).toHaveCount(6);
+
+  const search = page.getByRole('textbox', { name: 'Search tours' });
+  await search.fill('namespace');
+  await expect(tours.getByRole('listitem')).toHaveCount(3);
+
+  await page.getByLabel('Filter tours by mode').selectOption('timed');
+  await expect(tours.getByRole('listitem')).toHaveCount(1);
+  await expect(tours).toContainText('Select the Academy namespace (presentation: timed)');
+
+  await search.fill('does not exist');
+  await expect(page.getByText('No matching tours', { exact: true })).toBeVisible();
+
+  await search.fill('');
+  await page.getByLabel('Filter tours by mode').selectOption('assisted');
+  await page.getByRole('button', {
+    name: 'Start Select the Academy namespace (assisted)',
+    exact: true
+  }).click();
+  await expect(page.locator('.academy-guidance__controller')).toContainText('Step 1 of 8');
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+});
+
 test('completes the Academy container-access lesson without blocking the console', async ({ page }) => {
   const consoleErrors: string[] = [];
   const pageErrors: string[] = [];

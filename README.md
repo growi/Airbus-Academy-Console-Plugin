@@ -13,6 +13,14 @@ which cannot be expressed by a native `ConsoleQuickStart`:
 - running a persistent route-aware lesson that advances when the user opens Workloads,
   the known database pod, Logs, and Terminal.
 
+## Tour catalog
+
+The Academy guidance page renders every registered module from `trainingModuleCatalog`. Its
+responsive list shows the module title, short description, inferred guidance mode, step count, and
+an explicit Start action. Users can search titles and descriptions or filter by Assisted,
+Continue, and Timed mode. Adding a module to `src/modules/catalog.ts` automatically adds it to this
+page; no separate page configuration is required.
+
 ## Training modules
 
 Training content is separate from the engine under `src/modules/`. A module defines its title,

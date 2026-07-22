@@ -1,0 +1,23 @@
+.academy-tour-catalog__toolbar {
+  border-bottom: 1px solid var(--pf-t--global--border--color--default, #d2d2d2);
+}
+
+.academy-tour-catalog__search {
+  min-width: min(28rem, 100%);
+}
+
+.academy-tour-catalog__description {
+  color: var(--pf-t--global--text--color--subtle, #6a6e73);
+  margin: 0.25rem 0 0;
+  max-width: 56rem;
+}
+
+.academy-tour-catalog__empty {
+  padding: 3rem;
+  text-align: center;
+}
+
+.academy-tour-catalog__empty p {
+  color: var(--pf-t--global--text--color--subtle, #6a6e73);
+  margin-top: 0.5rem;
+}
