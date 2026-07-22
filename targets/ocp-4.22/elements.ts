@@ -11,6 +11,10 @@ export const resolveConsoleElement = (id: string, value?: string) => {
       return document.querySelector<HTMLElement>('[data-test="dropdown-text-filter"]');
     case 'namespaceOption':
       return exactText('[data-test="dropdown-menu-item-link"] [role="menuitem"]', value);
+    case 'navigationLink':
+      return exactText('a', value);
+    case 'resourceSearch':
+      return document.querySelector<HTMLElement>('[placeholder="Search by name..."]');
     default:
       return null;
   }

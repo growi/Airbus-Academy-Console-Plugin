@@ -37,7 +37,7 @@
       "id": "open-all-pods",
       "title": "Open Pods across all projects",
       "description": "Open the cluster-wide Pods list so you can narrow the view with the project selector.",
-      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/core~v1~Pod" },
+      "target": { "type": "consoleElement", "id": "navigationLink", "value": "Pods" },
       "complete": {
         "operation": { "type": "navigate", "path": "/k8s/all-namespaces/core~v1~Pod" },
         "verify": { "type": "route", "path": "/k8s/all-namespaces/core~v1~Pod" }

@@ -71,10 +71,10 @@ test('searches and filters the registered tour catalog', async ({ page }) => {
   await page.goto('/academy/guidance');
 
   const tours = page.getByRole('list', { name: 'Academy tours' });
-  await expect(tours.getByRole('listitem')).toHaveCount(6);
+  await expect(tours.getByRole('listitem')).toHaveCount(12);
 
   const search = page.getByRole('textbox', { name: 'Search tours' });
-  await search.fill('namespace');
+  await search.fill('Select the Academy namespace');
   await expect(tours.getByRole('listitem')).toHaveCount(3);
 
   await page.getByLabel('Filter tours by mode').selectOption('timed');
@@ -92,6 +92,58 @@ test('searches and filters the registered tour catalog', async ({ page }) => {
   }).click();
   await expect(page.locator('.academy-guidance__controller')).toContainText('Step 1 of 8');
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
+});
+
+test('presents the A08 OpenShift console tour', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/academy/lessons/lab-a08-openshift-console-timed/start');
+
+  const bubble = page.locator('.academy-guidance__bubble');
+  for (const title of [
+    'Open Workloads',
+    'Open Deployments',
+    'Open Networking',
+    'Open Services',
+    'Open Storage',
+    'Open PersistentVolumeClaims',
+    'Open ConfigMaps'
+  ]) {
+    await expect(bubble).toContainText(title, { timeout: 8_000 });
+  }
+  await expect(page).toHaveURL(
+    /\/k8s\/ns\/dcs-academy-portal\/core~v1~ConfigMap$/,
+    { timeout: 8_000 }
+  );
+  await expect(page.locator('.academy-guidance__controller')).toHaveCount(0);
+});
+
+test('presents the A06 namespace-isolation tour', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/academy/lessons/lab-a06-namespace-isolation-timed/start');
+
+  const bubble = page.locator('.academy-guidance__bubble');
+  for (const title of [
+    'Open Workloads',
+    'Open ConfigMaps across projects',
+    'Open the project selector',
+    'Filter for the portal namespace',
+    'Select dcs-academy-portal',
+    'Open kube-root-ca.crt in dcs-academy-portal',
+    'Open the project selector again',
+    'Filter for the plugin namespace',
+    'Select academy-console-plugin',
+    'Filter for kube-root-ca.crt',
+    'Open kube-root-ca.crt in academy-console-plugin'
+  ]) {
+    await expect(bubble).toContainText(title, { timeout: 8_000 });
+  }
+  await expect(page).toHaveURL(
+    /\/k8s\/ns\/academy-console-plugin\/configmaps\/kube-root-ca\.crt$/,
+    { timeout: 8_000 }
+  );
+  await expect(page.locator('.academy-guidance__controller')).toHaveCount(0);
 });
 
 test('completes the Academy container-access lesson without blocking the console', async ({ page }) => {

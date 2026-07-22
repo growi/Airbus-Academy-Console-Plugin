@@ -2,6 +2,8 @@ import academyPortalContainerAccess from './academy-portal-container-access.json
 import academyPortalContainerAccessManual from './academy-portal-container-access-manual.json';
 import academyPortalContainerAccessTimed from './academy-portal-container-access-timed.json';
 import academyPortalNamespaceFilter from './academy-portal-namespace-filter.json';
+import labA06NamespaceIsolation from './lab-a06-namespace-isolation.json';
+import labA08OpenShiftConsole from './lab-a08-openshift-console.json';
 import type { TrainingMode, TrainingModule, TrainingModuleCatalogEntry } from './types';
 import { createPresentationVariant } from './variants';
 
@@ -25,13 +27,59 @@ const namespaceFilterTimed = createPresentationVariant(
   { initiator: 'timer', delay: '5s' }
 );
 
+const a08Module = labA08OpenShiftConsole as TrainingModule;
+const a08Manual = createPresentationVariant(
+  a08Module,
+  {
+    id: 'lab-a08-openshift-console-manual',
+    title: 'A08 — The OpenShift Console (presentation: Continue)',
+    description: 'Review each console area and press Continue to navigate through the live resources.'
+  },
+  { initiator: 'continue' }
+);
+const a08Timed = createPresentationVariant(
+  a08Module,
+  {
+    id: 'lab-a08-openshift-console-timed',
+    title: 'A08 — The OpenShift Console (presentation: timed)',
+    description: 'Watch a guided presentation of the main OpenShift console resource areas.'
+  },
+  { initiator: 'timer', delay: '5s' }
+);
+
+const a06Module = labA06NamespaceIsolation as TrainingModule;
+const a06Manual = createPresentationVariant(
+  a06Module,
+  {
+    id: 'lab-a06-namespace-isolation-manual',
+    title: 'A06 — Namespace isolation (presentation: Continue)',
+    description: 'Press Continue to compare same-named resources across two OpenShift projects.'
+  },
+  { initiator: 'continue' }
+);
+const a06Timed = createPresentationVariant(
+  a06Module,
+  {
+    id: 'lab-a06-namespace-isolation-timed',
+    title: 'A06 — Namespace isolation (presentation: timed)',
+    description: 'Watch the console change namespace scope while the resource name remains the same.'
+  },
+  { initiator: 'timer', delay: '5s' }
+);
+
 const modules = [
   academyPortalContainerAccess as TrainingModule,
   academyPortalContainerAccessManual as TrainingModule,
   academyPortalContainerAccessTimed as TrainingModule,
   namespaceFilterModule,
   namespaceFilterManual,
-  namespaceFilterTimed
+  namespaceFilterTimed,
+  a08Module,
+  a08Manual,
+  a08Timed,
+  a06Module,
+  a06Manual,
+  a06Timed
 ];
 
 export const trainingModules = Object.freeze(modules);

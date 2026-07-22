@@ -21,6 +21,9 @@ an explicit Start action. Users can search titles and descriptions or filter by 
 Continue, and Timed mode. Adding a module to `src/modules/catalog.ts` automatically adds it to this
 page; no separate page configuration is required.
 
+The current Academy workshop candidate assessment, recommended delivery order, and production
+prerequisites are tracked in `docs/academy-tour-candidates.md`.
+
 ## Training modules
 
 Training content is separate from the engine under `src/modules/`. A module defines its title,
@@ -141,7 +144,9 @@ Supported targets:
 - `href` highlights an anchor with the exact console-relative URL.
 - `consoleElement` resolves a named semantic console control through the selected OpenShift target
   adapter. The current adapters provide `namespaceSelector`, `namespaceFilter`, and
-  `namespaceOption`; the latter takes the exact option text in `value`.
+  `namespaceOption`; the latter takes the exact option text in `value`. `navigationLink` resolves a
+  sidebar link by its exact visible name regardless of the selected namespace, and
+  `resourceSearch` resolves the current resource list's name filter.
 
 Supported operations:
 

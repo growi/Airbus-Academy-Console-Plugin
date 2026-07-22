@@ -38,7 +38,7 @@
       "id": "open-pods",
       "title": "Open Pods",
       "description": "Pods are running workload instances. The project-scoped Pods page will open automatically.",
-      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/core~v1~Pod" },
+      "target": { "type": "consoleElement", "id": "navigationLink", "value": "Pods" },
       "complete": {
         "operation": { "type": "navigate", "path": "/k8s/ns/dcs-academy-portal/core~v1~Pod" },
         "presentation": { "initiator": "timer", "delay": "5s" },

@@ -129,8 +129,10 @@ const findTarget = (target?: TrainingTarget) => {
 
 const routeMatches = (pathname: string, path: string) => {
   const expectedPath = resolveConsolePath(path);
-  return resolveConsoleTargetPaths(expectedPath).includes(pathname) ||
-    resolveConsoleTargetPaths(pathname).includes(expectedPath);
+  const expectedPaths = new Set([expectedPath, ...resolveConsoleTargetPaths(expectedPath)]);
+  return [pathname, ...resolveConsoleTargetPaths(pathname)].some((candidate) =>
+    expectedPaths.has(candidate)
+  );
 };
 
 const verificationSatisfied = (

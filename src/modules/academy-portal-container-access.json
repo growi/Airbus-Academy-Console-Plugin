@@ -37,7 +37,7 @@
       "id": "open-pods",
       "title": "Open Pods",
       "description": "Select Pods to see the workload instances running in the current project. The project is already scoped to dcs-academy-portal.",
-      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/core~v1~Pod" },
+      "target": { "type": "consoleElement", "id": "navigationLink", "value": "Pods" },
       "complete": {
         "operation": { "type": "navigate", "path": "/k8s/ns/dcs-academy-portal/core~v1~Pod" },
         "verify": { "type": "route", "path": "/k8s/ns/dcs-academy-portal/core~v1~Pod" }

@@ -79,7 +79,7 @@
                 "properties": {
                   "type": { "const": "consoleElement" },
                   "id": {
-                    "enum": ["namespaceSelector", "namespaceFilter", "namespaceOption"]
+                "enum": ["namespaceSelector", "namespaceFilter", "namespaceOption", "navigationLink", "resourceSearch"]
                   },
                   "value": { "type": "string", "minLength": 1 }
                 }
