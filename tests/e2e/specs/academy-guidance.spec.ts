@@ -1,4 +1,4 @@
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 
 const MODULE_PATH = '/academy/lessons/academy-portal-container-access/start';
 
@@ -41,6 +41,28 @@ const installPerformanceProbe = async (page: Page) => {
       metrics.longTasks.push(...entries.getEntries().map((entry) => entry.duration));
     }).observe({ entryTypes: ['longtask'] });
   });
+};
+
+const expandWorkloads = async (page: Page) => {
+  const workloads = page.locator('[data-quickstart-id="qs-nav-workloads"]');
+  await expect(workloads).toBeVisible();
+  if ((await workloads.getAttribute('aria-expanded')) !== 'true') await workloads.click();
+  await expect(workloads).toHaveAttribute('aria-expanded', 'true');
+};
+
+const expectSpotlightOn = async (spotlight: Locator, target: Locator) => {
+  await expect.poll(async () => {
+    const spotlightBox = await spotlight.boundingBox();
+    const targetBox = await target.boundingBox();
+    if (!spotlightBox || !targetBox) return false;
+    return ['x', 'y', 'width', 'height'].every(
+      (property) =>
+        Math.abs(
+          spotlightBox[property as keyof typeof spotlightBox] -
+            targetBox[property as keyof typeof targetBox]
+        ) < 2
+    );
+  }).toBe(true);
 };
 
 test('completes the Academy container-access lesson without blocking the console', async ({ page }) => {
@@ -131,4 +153,128 @@ test('completes the Academy container-access lesson without blocking the console
   await stopLesson.click();
   await expect(guidancePanel).toHaveCount(0);
   await expect(stopLesson).toHaveCount(0);
+});
+
+test('performs the Continue-driven presentation and verifies every step', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/k8s/ns/dcs-academy-portal/core~v1~Pod');
+  await expandWorkloads(page);
+  await page.goto('/academy/lessons/academy-portal-container-access-manual/start');
+
+  const guidancePanel = page.locator('.academy-guidance__controller');
+  const spotlight = page.locator('.academy-guidance__spotlight');
+  const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
+  await expect(guidancePanel).toContainText('Open Workloads');
+  await expect(spotlight).toBeVisible();
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expect(guidancePanel).toContainText('Open Pods');
+  await expect.poll(() => page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('academy-guidance.active-module') ?? '{}').step
+  )).toBe(1);
+  const podsTarget = page.locator('a[href="/k8s/all-namespaces/core~v1~Pod"]');
+  await expect(podsTarget).toBeVisible();
+  await expect(spotlight).toBeVisible();
+  await expectSpotlightOn(spotlight, podsTarget);
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expect(page).toHaveURL(/\/k8s\/ns\/dcs-academy-portal\/core~v1~Pod$/);
+  await expect(guidancePanel).toContainText('Open the Academy database pod');
+  await continueButton.click();
+  await expect(page).toHaveURL(/\/pods\/dcs-academy-portal-db-1$/);
+  await expect(guidancePanel).toContainText('Inspect the logs');
+  await continueButton.click();
+  await expect(page).toHaveURL(/\/pods\/dcs-academy-portal-db-1\/logs$/);
+  await expect(guidancePanel).toContainText('Open the container terminal');
+  await continueButton.click();
+  await expect(page).toHaveURL(/\/pods\/dcs-academy-portal-db-1\/terminal$/);
+  await expect(guidancePanel).toContainText('Presentation complete');
+});
+
+test('performs the timed presentation and verifies every step', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/k8s/ns/dcs-academy-portal/core~v1~Pod');
+  await expandWorkloads(page);
+  await page.goto('/academy/lessons/academy-portal-container-access-timed/start');
+
+  const guidancePanel = page.locator('.academy-guidance__controller');
+  await expect(guidancePanel).toContainText('Open Workloads');
+  await expect(guidancePanel).toContainText('Continuing in 5s');
+  await expect(guidancePanel).toContainText('Open Pods', { timeout: 8_000 });
+  await expect.poll(() => page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('academy-guidance.active-module') ?? '{}').step
+  )).toBe(1);
+  await expectSpotlightOn(
+    page.locator('.academy-guidance__spotlight'),
+    page.locator('a[href="/k8s/all-namespaces/core~v1~Pod"]')
+  );
+  await expect(guidancePanel).toContainText('Open the Academy database pod', { timeout: 8_000 });
+  await expect(guidancePanel).toContainText('Inspect the logs', { timeout: 8_000 });
+  await expect(guidancePanel).toContainText('Open the container terminal', { timeout: 8_000 });
+  await expect(guidancePanel).toContainText('Timed presentation complete', { timeout: 8_000 });
+  await expect(page).toHaveURL(/\/pods\/dcs-academy-portal-db-1\/terminal$/);
+});
+
+test('restarts the Continue presentation cleanly after completion and Stop', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/k8s/ns/dcs-academy-portal/core~v1~Pod');
+  await expandWorkloads(page);
+  await page.goto('/academy/lessons/academy-portal-container-access-manual/start');
+
+  const guidancePanel = page.locator('.academy-guidance__controller');
+  const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
+  for (const title of [
+    'Open Workloads',
+    'Open Pods',
+    'Open the Academy database pod',
+    'Inspect the logs',
+    'Open the container terminal'
+  ]) {
+    await expect(guidancePanel).toContainText(title);
+    await expect(continueButton).toBeEnabled();
+    await continueButton.click();
+  }
+  await expect(guidancePanel).toContainText('Presentation complete');
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  await expect.poll(() => page.evaluate(() =>
+    sessionStorage.getItem('academy-guidance.active-module')
+  )).toBeNull();
+
+  const workloads = page.locator('[data-quickstart-id="qs-nav-workloads"]');
+  if ((await workloads.getAttribute('aria-expanded')) === 'true') await workloads.click();
+  await expect(workloads).toHaveAttribute('aria-expanded', 'false');
+  const home = page.getByRole('button', { name: 'Home', exact: true });
+  if ((await home.getAttribute('aria-expanded')) !== 'true') await home.click();
+  await page.getByRole('link', { name: 'Academy guidance', exact: true }).click();
+  await expect(page).toHaveURL(/\/academy\/guidance$/);
+  await expect(workloads).toHaveAttribute('aria-expanded', 'false');
+  await page.getByRole('button', {
+    name: 'Start Academy portal container access (presentation: Continue)',
+    exact: true
+  }).click();
+  await expect(guidancePanel).toContainText('Open Workloads');
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expect(guidancePanel).toContainText('Open Pods');
+  await expect.poll(() => page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem('academy-guidance.active-module') ?? '{}').step
+  )).toBe(1);
+  const renderedPodsLink = page.getByRole('link', { name: 'Pods', exact: true });
+  await expect(renderedPodsLink).toBeVisible();
+  const renderedPodsHref = await renderedPodsLink.getAttribute('href');
+  expect([
+    '/k8s/all-namespaces/core~v1~Pod',
+    '/k8s/ns/dcs-academy-portal/core~v1~Pod'
+  ]).toContain(renderedPodsHref);
+  await expectSpotlightOn(
+    page.locator('.academy-guidance__spotlight'),
+    renderedPodsLink
+  );
+  await expect(continueButton).toBeEnabled();
+  await continueButton.click();
+  await expect(page).toHaveURL(/\/k8s\/ns\/dcs-academy-portal\/core~v1~Pod$/);
+  await expect(guidancePanel).toContainText('Open the Academy database pod');
 });

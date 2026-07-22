@@ -32,12 +32,15 @@ const GuidancePage: FC = () => {
         <Card>
           <CardTitle>Navigation controls</CardTitle>
           <CardBody>
-            <Button onClick={() => guidance.openPage('/k8s/ns/dcs-academy-portal/core~v1~Pod')}>
-              Open Pods page
+            <Button
+              onClick={() => guidance.primaryResource &&
+                guidance.openPage(guidance.primaryResource.listPath)}
+            >
+              Open resource list
             </Button>{' '}
-            <Button onClick={() => guidance.switchPodTab('details')}>Open pod details</Button>{' '}
-            <Button onClick={() => guidance.switchPodTab('logs')}>Switch to Logs</Button>{' '}
-            <Button onClick={() => guidance.switchPodTab('terminal')}>Switch to Terminal</Button>
+            <Button onClick={() => guidance.openResourceTab('details')}>Open resource details</Button>{' '}
+            <Button onClick={() => guidance.openResourceTab('logs')}>Switch to Logs</Button>{' '}
+            <Button onClick={() => guidance.openResourceTab('terminal')}>Switch to Terminal</Button>
           </CardBody>
         </Card>
       </PageSection>
@@ -51,7 +54,8 @@ const GuidancePage: FC = () => {
               <dt>Namespace</dt><dd>{guidance.currentNamespace || 'none'}</dd>
               <dt>Active route tab</dt><dd>{guidance.activeTab || 'none'}</dd>
               <dt>Active module</dt><dd>{guidance.activeModule?.id || 'none'}</dd>
-              <dt>Academy database pod</dt><dd>{guidance.podPhase}</dd>
+              <dt>{guidance.primaryResource?.label ?? 'Primary resource'}</dt>
+              <dd>{guidance.resourcePhase}</dd>
               <dt>Highlight target</dt><dd>{guidance.highlightId || 'none'}</dd>
               <dt>Target found</dt><dd>{String(guidance.highlightTargetFound)}</dd>
             </dl>

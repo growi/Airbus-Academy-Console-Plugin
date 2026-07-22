@@ -16,20 +16,23 @@ import {
 import { useLocation } from 'react-router';
 
 import { defaultTrainingModule, getTrainingModule } from '../modules/catalog';
-import type { TrainingModule, TrainingStep, TrainingTarget } from '../modules/types';
+import type {
+  TrainingModule,
+  TrainingResource,
+  TrainingStep,
+  TrainingTarget
+} from '../modules/types';
 import { useConsoleNavigation } from '../platform/navigation';
-import { resolveConsolePath, resolveConsoleTargetPath } from '../platform/routes';
+import { resolveConsolePath, resolveConsoleTargetPaths } from '../platform/routes';
 import './guidance.css';
 
-const NAMESPACE = 'dcs-academy-portal';
-const POD_NAME = 'dcs-academy-portal-db-1';
-const POD_PATH = `/k8s/ns/${NAMESPACE}/pods/${POD_NAME}`;
 const SESSION_KEY = 'academy-guidance.active-module';
 
 type GuidanceSnapshot = {
   active: boolean;
   activeModule?: TrainingModule;
   activeTab: string;
+  canPerformCurrentStep: boolean;
   completed: boolean;
   currentStep?: TrainingStep;
   currentNamespace: string;
@@ -37,11 +40,12 @@ type GuidanceSnapshot = {
   highlightTargetFound: boolean;
   path: string;
   perspective: string;
-  podPhase: string;
+  primaryResource?: TrainingResource;
+  resourcePhase: string;
   step: number;
 };
 
-type PodResource = K8sResourceCommon & {
+type WatchedResource = K8sResourceCommon & {
   status?: { phase?: string };
 };
 
@@ -49,17 +53,19 @@ type GuidanceValue = GuidanceSnapshot & {
   clearHighlight: () => void;
   highlight: (targetId: string) => void;
   openPage: (path: string) => void;
-  reportHighlightTarget: (found: boolean) => void;
+  performCurrentStep: () => void;
+  reportHighlightTarget: (targetSelector: string, found: boolean) => void;
   start: () => void;
   startModule: (moduleId: string) => boolean;
   stop: () => void;
-  switchPodTab: (tab: 'details' | 'logs' | 'terminal') => void;
+  openResourceTab: (tab: string) => void;
 };
 
 const defaultValue: GuidanceValue = {
   active: false,
   activeModule: undefined,
   activeTab: '',
+  canPerformCurrentStep: false,
   clearHighlight: () => undefined,
   completed: false,
   currentStep: undefined,
@@ -68,15 +74,17 @@ const defaultValue: GuidanceValue = {
   highlightId: '',
   highlightTargetFound: false,
   openPage: () => undefined,
+  performCurrentStep: () => undefined,
   path: '',
   perspective: '',
-  podPhase: '',
+  primaryResource: undefined,
+  resourcePhase: '',
   reportHighlightTarget: () => undefined,
   start: () => undefined,
   startModule: () => false,
   step: 0,
   stop: () => undefined,
-  switchPodTab: () => undefined
+  openResourceTab: () => undefined
 };
 
 const GuidanceContext = createContext<GuidanceValue>(defaultValue);
@@ -84,9 +92,16 @@ const GuidanceContext = createContext<GuidanceValue>(defaultValue);
 const parseNamespace = (path: string) =>
   decodeURIComponent(path.match(/\/k8s\/ns\/([^/]+)/)?.[1] ?? '');
 
-const parseTab = (path: string) => {
+const parseTab = (path: string, resource?: TrainingResource) => {
   const tab = path.match(/\/(details|logs|terminal)$/)?.[1];
-  return tab ?? (path.includes(`/pods/${POD_NAME}`) ? 'details' : '');
+  return tab ?? (resource && path === resource.consolePath ? 'details' : '');
+};
+
+const parseApiVersion = (apiVersion: string) => {
+  const [group, version] = apiVersion.includes('/')
+    ? apiVersion.split('/', 2)
+    : [undefined, apiVersion];
+  return { group, version };
 };
 
 const selectorForTarget = (target?: TrainingTarget) => {
@@ -94,8 +109,13 @@ const selectorForTarget = (target?: TrainingTarget) => {
   if (target.type === 'quickStartId') {
     return `[data-quickstart-id="${target.value}"]`;
   }
-  return `a[href="${resolveConsoleTargetPath(target.value)}"]`;
+  return resolveConsoleTargetPaths(target.value)
+    .map((path) => `a[href="${path}"]`)
+    .join(', ');
 };
+
+const routeMatches = (pathname: string, path: string) =>
+  [resolveConsolePath(path), ...resolveConsoleTargetPaths(path)].includes(pathname);
 
 const loadStoredLesson = () => {
   try {
@@ -118,16 +138,29 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   const [active, setActive] = useState(Boolean(storedLesson));
   const [activeModuleId, setActiveModuleId] = useState(storedLesson?.moduleId ?? '');
   const [step, setStep] = useState(storedLesson?.step ?? 0);
+  const [performedStep, setPerformedStep] = useState(-1);
   const [highlightId, setHighlightId] = useState('');
-  const [highlightTargetFound, setHighlightTargetFound] = useState(false);
-  const [pod, podLoaded, podError] = useK8sWatchResource<PodResource>({
-    groupVersionKind: { version: 'v1', kind: 'Pod' },
-    name: POD_NAME,
-    namespace: NAMESPACE
-  });
+  const [resolvedHighlightId, setResolvedHighlightId] = useState('');
   const activeModule = getTrainingModule(activeModuleId);
+  const resourceModule = activeModule ?? defaultTrainingModule;
+  const primaryResource =
+    resourceModule.context.resources[resourceModule.context.primaryResource];
+  const resourceApi = parseApiVersion(primaryResource.apiVersion);
+  const [resource, resourceLoaded, resourceError] = useK8sWatchResource<WatchedResource>({
+    groupVersionKind: {
+      ...(resourceApi.group ? { group: resourceApi.group } : {}),
+      version: resourceApi.version,
+      kind: primaryResource.kind
+    },
+    name: primaryResource.name,
+    namespace: primaryResource.namespace
+  });
   const currentStep = activeModule?.steps[step];
   const completed = Boolean(active && activeModule && step >= activeModule.steps.length);
+  const highlightTargetFound = Boolean(highlightId && resolvedHighlightId === highlightId);
+  const canPerformCurrentStep = Boolean(
+    active && currentStep?.complete.presentation && highlightTargetFound
+  );
 
   const openPage = useCallback((path: string) => navigate(resolveConsolePath(path)), [navigate]);
   const highlight = useCallback(
@@ -135,11 +168,17 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     []
   );
   const clearHighlight = useCallback(() => setHighlightId(''), []);
-  const reportHighlightTarget = useCallback((found: boolean) => setHighlightTargetFound(found), []);
-  const switchPodTab = useCallback(
-    (tab: 'details' | 'logs' | 'terminal') =>
-      navigate(tab === 'details' ? POD_PATH : `${POD_PATH}/${tab}`),
-    [navigate]
+  const reportHighlightTarget = useCallback((targetSelector: string, found: boolean) => {
+    setResolvedHighlightId(found ? targetSelector : '');
+  }, []);
+  const openResourceTab = useCallback(
+    (tab: string) => {
+      const path = tab === 'details'
+        ? primaryResource.consolePath
+        : primaryResource.tabs?.[tab];
+      if (path) navigate(resolveConsolePath(path));
+    },
+    [navigate, primaryResource]
   );
   const startModule = useCallback((moduleId: string) => {
     const module = getTrainingModule(moduleId);
@@ -147,6 +186,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     setActive(true);
     setActiveModuleId(module.id);
     setStep(0);
+    setPerformedStep(-1);
     setHighlightId(selectorForTarget(module.steps[0]?.target));
     return true;
   }, []);
@@ -157,29 +197,58 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     setActive(false);
     setActiveModuleId('');
     setStep(0);
+    setPerformedStep(-1);
     setHighlightId('');
     sessionStorage.removeItem(SESSION_KEY);
   }, []);
+  const performCurrentStep = useCallback(() => {
+    if (!canPerformCurrentStep || !currentStep?.complete.presentation) return;
+    setPerformedStep(step);
+    const operation = currentStep.complete.operation;
+    const verification = currentStep.complete.verify;
+    const target = document.querySelector<HTMLElement>(selectorForTarget(currentStep.target));
+    const verificationAlreadySatisfied = verification.type === 'route'
+      ? routeMatches(location.pathname, verification.path)
+      : target?.getAttribute(verification.attribute) === verification.value;
+    if (verificationAlreadySatisfied) {
+      setStep((current) => (current === step ? current + 1 : current));
+      return;
+    }
+    if (operation.type === 'navigate') {
+      navigate(resolveConsolePath(operation.path));
+      return;
+    }
+    target?.click();
+  }, [canPerformCurrentStep, currentStep, location.pathname, navigate, step]);
 
   useEffect(() => {
     setHighlightId(active ? selectorForTarget(currentStep?.target) : '');
   }, [active, currentStep]);
 
   useEffect(() => {
-    if (!active || !currentStep || currentStep.completeWhen.type !== 'route') return;
-    const canonicalPath = resolveConsolePath(currentStep.completeWhen.value);
-    const targetPath = resolveConsoleTargetPath(currentStep.completeWhen.value);
-    if (location.pathname === canonicalPath || location.pathname === targetPath) {
+    if (
+      !active ||
+      !currentStep ||
+      currentStep.complete.verify.type !== 'route' ||
+      (currentStep.complete.presentation && performedStep !== step)
+    ) return;
+    const canonicalPath = resolveConsolePath(currentStep.complete.verify.path);
+    if (routeMatches(location.pathname, currentStep.complete.verify.path)) {
       if (location.pathname !== canonicalPath) navigate(canonicalPath);
       setStep((current) => current + 1);
     }
-  }, [active, currentStep, location.pathname, navigate]);
+  }, [active, currentStep, location.pathname, navigate, performedStep, step]);
 
   useEffect(() => {
-    if (!active || !currentStep || currentStep.completeWhen.type !== 'targetAttribute') {
+    if (
+      !active ||
+      !currentStep ||
+      currentStep.complete.verify.type !== 'targetAttribute' ||
+      (currentStep.complete.presentation && performedStep !== step)
+    ) {
       return undefined;
     }
-    const completionCondition = currentStep.completeWhen;
+    const completionCondition = currentStep.complete.verify;
     const targetSelector = selectorForTarget(currentStep.target);
     let completedStep = false;
     const verifyDesiredState = () => {
@@ -201,14 +270,29 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     });
     verifyDesiredState();
     return () => observer.disconnect();
-  }, [active, currentStep]);
+  }, [active, currentStep, performedStep, step]);
+
+  useEffect(() => {
+    const presentation = currentStep?.complete.presentation;
+    if (
+      !active ||
+      !canPerformCurrentStep ||
+      !presentation ||
+      presentation.initiator !== 'timer'
+    ) return undefined;
+    const match = presentation.delay.match(/^(\d+)(ms|s)$/);
+    if (!match) return undefined;
+    const duration = Number(match[1]) * (match[2] === 's' ? 1000 : 1);
+    const timer = window.setTimeout(performCurrentStep, duration);
+    return () => window.clearTimeout(timer);
+  }, [active, canPerformCurrentStep, currentStep, performCurrentStep]);
 
   useEffect(() => {
     if (!active || !activeModule || step === 0) return undefined;
     const previousStep = activeModule.steps[step - 1];
-    if (previousStep.completeWhen.type !== 'targetAttribute') return undefined;
+    if (previousStep.complete.verify.type !== 'targetAttribute') return undefined;
 
-    const previousCondition = previousStep.completeWhen;
+    const previousCondition = previousStep.complete.verify;
     const currentTargetSelector = selectorForTarget(currentStep?.target);
     const previousTargetSelector = selectorForTarget(previousStep.target);
     let rolledBack = false;
@@ -243,7 +327,8 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     () => ({
       active,
       activeModule,
-      activeTab: parseTab(location.pathname),
+      activeTab: parseTab(location.pathname, primaryResource),
+      canPerformCurrentStep,
       clearHighlight,
       completed,
       currentStep,
@@ -252,19 +337,26 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       highlightId,
       highlightTargetFound,
       openPage,
+      performCurrentStep,
       path: location.pathname,
       perspective,
-      podPhase: podError ? 'unavailable' : podLoaded ? String(pod?.status?.phase ?? 'unknown') : 'loading',
+      primaryResource,
+      resourcePhase: resourceError
+        ? 'unavailable'
+        : resourceLoaded
+          ? String(resource?.status?.phase ?? 'unknown')
+          : 'loading',
       reportHighlightTarget,
       start,
       startModule,
       step,
       stop,
-      switchPodTab
+      openResourceTab
     }),
     [
       active,
       activeModule,
+      canPerformCurrentStep,
       clearHighlight,
       completed,
       currentStep,
@@ -273,23 +365,25 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       highlightTargetFound,
       location.pathname,
       openPage,
+      openResourceTab,
+      performCurrentStep,
       perspective,
-      pod,
-      podError,
-      podLoaded,
+      primaryResource,
       reportHighlightTarget,
+      resource,
+      resourceError,
+      resourceLoaded,
       start,
       startModule,
       step,
-      stop,
-      switchPodTab
+      stop
     ]
   );
 };
 
 type OverlayProps = {
   targetSelector: string;
-  onTargetState: (found: boolean) => void;
+  onTargetState: (targetSelector: string, found: boolean) => void;
 };
 
 const GuidanceOverlay: FC<OverlayProps> = ({ targetSelector, onTargetState }) => {
@@ -297,7 +391,7 @@ const GuidanceOverlay: FC<OverlayProps> = ({ targetSelector, onTargetState }) =>
 
   useEffect(() => {
     if (!targetSelector) {
-      onTargetState(false);
+      onTargetState('', false);
       setStyle({});
       return undefined;
     }
@@ -307,7 +401,7 @@ const GuidanceOverlay: FC<OverlayProps> = ({ targetSelector, onTargetState }) =>
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const target = document.querySelector(targetSelector);
-        onTargetState(Boolean(target));
+        onTargetState(targetSelector, Boolean(target));
         if (!target) {
           setStyle({});
           return;
@@ -347,13 +441,32 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) =>
           <small>
             Step {value.step + 1} of {value.activeModule?.steps.length}
           </small>
+          {value.currentStep?.complete.presentation?.initiator === 'continue' ? (
+            <p>
+              <button
+                type="button"
+                disabled={!value.canPerformCurrentStep}
+                onClick={value.performCurrentStep}
+              >
+                Continue
+              </button>
+            </p>
+          ) : null}
+          {value.currentStep?.complete.presentation?.initiator === 'timer' ? (
+            <p>
+              <small>Continuing in {value.currentStep.complete.presentation.delay}</small>
+            </p>
+          ) : null}
+          {value.currentStep?.complete.presentation && !value.canPerformCurrentStep ? (
+            <p><small>Waiting for the highlighted console target.</small></p>
+          ) : null}
         </>
       )}
       <dl>
         <dt>Perspective</dt><dd>{value.perspective || 'unknown'}</dd>
         <dt>Namespace</dt><dd>{value.currentNamespace || 'none'}</dd>
         <dt>Tab</dt><dd>{value.activeTab || 'none'}</dd>
-        <dt>Pod</dt><dd>{value.podPhase}</dd>
+        <dt>{value.primaryResource?.label ?? 'Resource'}</dt><dd>{value.resourcePhase}</dd>
       </dl>
       <button type="button" className="academy-guidance__secondary" onClick={value.stop}>Stop</button>
     </aside>

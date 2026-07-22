@@ -7,7 +7,7 @@ which cannot be expressed by a native `ConsoleQuickStart`:
 - opening console pages through the router;
 - switching route-backed resource tabs;
 - reading the current route, perspective, namespace, active tab, target availability,
-  and live Academy database pod phase.
+  and live module-defined resource phase.
 - running a persistent route-aware lesson that advances when the user opens Workloads,
   the known database pod, Logs, and Terminal.
 
@@ -19,7 +19,8 @@ purpose, completion text, and ordered steps. Each step provides:
 - a short title;
 - explanatory guidance describing what to do, why it matters, and how to proceed;
 - a trusted highlight target, currently a Quick Start ID or exact console link;
-- a click or route completion condition.
+- a completion transaction containing an operation, optional presentation policy, and independent
+  verification condition.
 
 `module.schema.json` documents the authoring contract and enables editor validation. Add a module
 JSON file and register it in `src/modules/catalog.ts`; arbitrary selectors are not accepted from
@@ -30,12 +31,14 @@ URLs.
 1. Copy `src/modules/academy-portal-container-access.json` to a new file in `src/modules/`.
 2. Give the module a unique lowercase `id` containing only letters, numbers, and hyphens.
 3. Write the module-level `title`, `description`, and `completionText`.
-4. Define the ordered `steps`. Each description should tell the learner what to do, why the
+4. Define `context.primaryResource` and its entry in `context.resources`. The engine uses its
+   Kubernetes identity for the live watch and its console paths for resource navigation controls.
+5. Define the ordered `steps`. Each description should tell the learner what to do, why the
    action matters, and how to recognize or perform it.
-5. Import and register the module in `src/modules/catalog.ts`.
-6. Build every supported target with `bin/pluginctl build ocp-4.20` and
+6. Import and register the module in `src/modules/catalog.ts`.
+7. Build every supported target with `bin/pluginctl build ocp-4.20` and
    `bin/pluginctl build ocp-4.22`.
-7. Deploy the new image and test both the guidance page and external launch URL.
+8. Deploy the new image and test both the guidance page and external launch URL.
 
 Minimal module example:
 
@@ -46,6 +49,24 @@ Minimal module example:
   "title": "Inspect an example pod",
   "description": "Learn how to find and inspect a running pod.",
   "completionText": "Lesson complete.",
+  "context": {
+    "primaryResource": "examplePod",
+    "resources": {
+      "examplePod": {
+        "apiVersion": "v1",
+        "kind": "Pod",
+        "label": "Example pod",
+        "listPath": "/k8s/ns/example/core~v1~Pod",
+        "name": "example-pod",
+        "namespace": "example",
+        "consolePath": "/k8s/ns/example/pods/example-pod",
+        "tabs": {
+          "logs": "/k8s/ns/example/pods/example-pod/logs",
+          "terminal": "/k8s/ns/example/pods/example-pod/terminal"
+        }
+      }
+    }
+  },
   "steps": [
     {
       "id": "open-workloads",
@@ -55,10 +76,13 @@ Minimal module example:
         "type": "quickStartId",
         "value": "qs-nav-workloads"
       },
-      "completeWhen": {
-        "type": "targetAttribute",
-        "attribute": "aria-expanded",
-        "value": "true"
+      "complete": {
+        "operation": { "type": "activateTarget" },
+        "verify": {
+          "type": "targetAttribute",
+          "attribute": "aria-expanded",
+          "value": "true"
+        }
       }
     },
     {
@@ -69,9 +93,16 @@ Minimal module example:
         "type": "href",
         "value": "/k8s/ns/example/core~v1~Pod"
       },
-      "completeWhen": {
-        "type": "route",
-        "value": "/k8s/ns/example/core~v1~Pod"
+      "complete": {
+        "operation": {
+          "type": "navigate",
+          "path": "/k8s/ns/example/core~v1~Pod"
+        },
+        "presentation": { "initiator": "continue" },
+        "verify": {
+          "type": "route",
+          "path": "/k8s/ns/example/core~v1~Pod"
+        }
       }
     }
   ]
@@ -94,12 +125,27 @@ Supported targets:
 - `quickStartId` highlights an element carrying the corresponding `data-quickstart-id`.
 - `href` highlights an anchor with the exact console-relative URL.
 
-Supported completion conditions:
+Supported operations:
+
+- `activateTarget` activates the highlighted console control.
+- `navigate` opens the configured console-relative path through the target router adapter.
+
+If `presentation` is omitted, the learner performs the operation and the engine only verifies it.
+`initiator: continue` shows a Continue button and `initiator: timer` performs the operation after a
+validated duration such as `500ms` or `5s`.
+
+Supported verification conditions:
 
 - `targetAttribute` advances only when the highlighted target has the configured attribute value.
   Use this for controls such as expandable navigation sections, where a click alone does not prove
   that the required state was reached.
 - `route` advances when the browser reaches the configured exact path.
+
+The three Academy portal examples demonstrate the supported policies:
+
+- `academy-portal-container-access` is assisted.
+- `academy-portal-container-access-manual` performs each operation after Continue.
+- `academy-portal-container-access-timed` performs each operation after five seconds.
 
 Do not put CSS selectors or executable behavior in external links. The launcher accepts only a
 registered module ID and resolves all behavior from the trusted module catalog.
