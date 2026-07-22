@@ -118,6 +118,31 @@ test('presents the A08 OpenShift console tour', async ({ page }) => {
   await expect(page.locator('.academy-guidance__controller')).toHaveCount(0);
 });
 
+test('keeps the spotlight aligned while navigation menus move or hide its target', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/academy/lessons/lab-a08-openshift-console/start');
+
+  const spotlight = page.locator('.academy-guidance__spotlight');
+  const workloads = page.locator('[data-quickstart-id="qs-nav-workloads"]');
+  if ((await workloads.getAttribute('aria-expanded')) !== 'true') await workloads.click();
+  await page.getByRole('link', { name: 'Deployments', exact: true }).click();
+
+  const networking = page.locator('[data-quickstart-id="qs-nav-networking"]');
+  if ((await networking.getAttribute('aria-expanded')) !== 'true') await networking.click();
+  const services = page.getByRole('link', { name: 'Services', exact: true });
+  await expectSpotlightOn(spotlight, services);
+
+  await workloads.click();
+  await expect(spotlight).toHaveCount(0);
+  await workloads.click();
+  await expect(spotlight).toHaveCount(0);
+
+  await networking.click();
+  await expectSpotlightOn(spotlight, services);
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+});
+
 test('presents the A06 namespace-isolation tour', async ({ page }) => {
   await login(page);
   await page.evaluate(() => sessionStorage.clear());

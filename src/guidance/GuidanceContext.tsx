@@ -256,6 +256,11 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
 
   useEffect(() => {
     setHighlightTarget(active ? currentStep?.target : undefined);
+    if (!active || !currentStep?.complete.presentation) return undefined;
+    const frame = requestAnimationFrame(() => {
+      findTarget(currentStep.target)?.scrollIntoView({ block: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [active, currentStep]);
 
   useEffect(() => {
@@ -488,35 +493,89 @@ const useTargetRect = ({ target, onTargetState }: TargetProps) => {
     }
 
     let frame = 0;
+    let layoutFrame = 0;
+    let layoutDeadline = 0;
+    const measure = () => {
+      const targetElement = findTarget(target);
+      if (!targetElement) {
+        onTargetState(resolvedTargetKey, false);
+        setTargetRect(undefined);
+        return;
+      }
+      const rect = targetElement.getBoundingClientRect();
+      let visibleBottom = Math.min(rect.bottom, window.innerHeight);
+      let visibleLeft = Math.max(rect.left, 0);
+      let visibleRight = Math.min(rect.right, window.innerWidth);
+      let visibleTop = Math.max(rect.top, 0);
+      let ancestor = targetElement.parentElement;
+      while (ancestor) {
+        const style = window.getComputedStyle(ancestor);
+        const ancestorRect = ancestor.getBoundingClientRect();
+        if (['auto', 'clip', 'hidden', 'scroll'].includes(style.overflowX)) {
+          visibleLeft = Math.max(visibleLeft, ancestorRect.left);
+          visibleRight = Math.min(visibleRight, ancestorRect.right);
+        }
+        if (['auto', 'clip', 'hidden', 'scroll'].includes(style.overflowY)) {
+          visibleTop = Math.max(visibleTop, ancestorRect.top);
+          visibleBottom = Math.min(visibleBottom, ancestorRect.bottom);
+        }
+        ancestor = ancestor.parentElement;
+      }
+      const visible = targetElement.getClientRects().length > 0 &&
+        visibleRight > visibleLeft &&
+        visibleBottom > visibleTop;
+      onTargetState(resolvedTargetKey, visible);
+      if (!visible) {
+        setTargetRect(undefined);
+        return;
+      }
+      const nextRect = {
+        bottom: visibleBottom,
+        height: visibleBottom - visibleTop,
+        left: visibleLeft,
+        right: visibleRight,
+        top: visibleTop,
+        width: visibleRight - visibleLeft
+      };
+      setTargetRect((current) =>
+        current && Object.keys(nextRect).every(
+          (key) => current[key as keyof TargetRect] === nextRect[key as keyof TargetRect]
+        ) ? current : nextRect
+      );
+    };
     const update = () => {
       cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const targetElement = findTarget(target);
-        onTargetState(resolvedTargetKey, Boolean(targetElement));
-        if (!targetElement) {
-          setTargetRect(undefined);
-          return;
-        }
-        const rect = targetElement.getBoundingClientRect();
-        setTargetRect({
-          bottom: rect.bottom,
-          height: rect.height,
-          left: rect.left,
-          right: rect.right,
-          top: rect.top,
-          width: rect.width
-        });
-      });
+      frame = requestAnimationFrame(measure);
+    };
+    const trackLayoutTransition = () => {
+      layoutDeadline = performance.now() + 400;
+      if (layoutFrame) return;
+      const track = () => {
+        measure();
+        layoutFrame = performance.now() < layoutDeadline
+          ? requestAnimationFrame(track)
+          : 0;
+      };
+      layoutFrame = requestAnimationFrame(track);
     };
 
-    const observer = new MutationObserver(update);
-    observer.observe(document.body, { childList: true, subtree: true });
+    const observer = new MutationObserver((records) => {
+      update();
+      if (records.some((record) => record.type === 'attributes')) trackLayoutTransition();
+    });
+    observer.observe(document.body, {
+      attributeFilter: ['aria-expanded', 'hidden'],
+      attributes: true,
+      childList: true,
+      subtree: true
+    });
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
     update();
 
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(layoutFrame);
       observer.disconnect();
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
