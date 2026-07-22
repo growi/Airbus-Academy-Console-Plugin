@@ -71,6 +71,18 @@
                   "type": { "const": "href" },
                   "value": { "type": "string", "pattern": "^/" }
                 }
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["type", "id"],
+                "properties": {
+                  "type": { "const": "consoleElement" },
+                  "id": {
+                    "enum": ["namespaceSelector", "namespaceFilter", "namespaceOption"]
+                  },
+                  "value": { "type": "string", "minLength": 1 }
+                }
               }
             ]
           },
@@ -86,6 +98,15 @@
                     "additionalProperties": false,
                     "required": ["type"],
                     "properties": { "type": { "const": "activateTarget" } }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "value"],
+                    "properties": {
+                      "type": { "const": "fillTarget" },
+                      "value": { "type": "string" }
+                    }
                   },
                   {
                     "type": "object",
@@ -127,6 +148,24 @@
                       "type": { "const": "targetAttribute" },
                       "attribute": { "type": "string", "minLength": 1 },
                       "value": { "type": "string" }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "value"],
+                    "properties": {
+                      "type": { "const": "targetValue" },
+                      "value": { "type": "string" }
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["type", "value"],
+                    "properties": {
+                      "type": { "const": "namespace" },
+                      "value": { "type": "string", "minLength": 1 }
                     }
                   },
                   {

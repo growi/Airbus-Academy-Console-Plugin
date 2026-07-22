@@ -98,7 +98,7 @@ test('completes the Academy container-access lesson without blocking the console
   await expect(workloads).toHaveAttribute('aria-expanded', 'true');
   await expect(guidanceBubble).toContainText('Open Pods');
 
-  const pods = page.locator('a[href="/k8s/all-namespaces/core~v1~Pod"]');
+  const pods = page.getByRole('link', { name: 'Pods', exact: true });
   await expect(pods).toBeVisible();
   await pods.click();
   await expect(page).toHaveURL(/\/k8s\/ns\/dcs-academy-portal\/core~v1~Pod$/);
@@ -176,7 +176,7 @@ test('performs the Continue-driven presentation and verifies every step', async 
   await expect.poll(() => page.evaluate(() =>
     JSON.parse(sessionStorage.getItem('academy-guidance.active-module') ?? '{}').step
   )).toBe(1);
-  const podsTarget = page.locator('a[href="/k8s/all-namespaces/core~v1~Pod"]');
+  const podsTarget = page.getByRole('link', { name: 'Pods', exact: true });
   await expect(podsTarget).toBeVisible();
   await expect(spotlight).toBeVisible();
   await expectSpotlightOn(spotlight, podsTarget);
@@ -218,7 +218,7 @@ test('performs the timed presentation and verifies every step', async ({ page })
   )).toBe(1);
   await expectSpotlightOn(
     page.locator('.academy-guidance__spotlight'),
-    page.locator('a[href="/k8s/all-namespaces/core~v1~Pod"]')
+    page.getByRole('link', { name: 'Pods', exact: true })
   );
   await expect(guidanceBubble).toContainText('Open the Academy database pod', { timeout: 8_000 });
   await expect(guidanceBubble).toContainText('Inspect the logs', { timeout: 8_000 });
@@ -323,4 +323,92 @@ test('restarts the timed presentation after automatic completion with Workloads 
     page.locator('.academy-guidance__spotlight'),
     page.getByRole('link', { name: 'Pods', exact: true })
   );
+});
+
+test('filters and selects the Academy namespace in assisted mode', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/k8s/all-namespaces/core~v1~Pod');
+  const workloads = page.locator('[data-quickstart-id="qs-nav-workloads"]');
+  if ((await workloads.getAttribute('aria-expanded')) === 'true') await workloads.click();
+  await page.goto('/academy/lessons/academy-portal-namespace-filter/start');
+
+  const bubble = page.locator('.academy-guidance__bubble');
+  await expect(bubble).toContainText('Open Workloads');
+  await workloads.click();
+  await expect(bubble).toContainText('Open Pods across all projects');
+  await page.getByRole('link', { name: 'Pods', exact: true }).click();
+  await expect(bubble).toContainText('Open the project selector');
+
+  const namespaceSelector = page.locator('.co-namespace-dropdown__menu-toggle');
+  await namespaceSelector.click();
+  await expect(bubble).toContainText('Filter for Academy namespaces');
+  const namespaceFilter = page.locator('[data-test="dropdown-text-filter"]');
+  await namespaceFilter.fill('academy');
+  await expect(bubble).toContainText('Select dcs-academy-portal');
+  await page.getByRole('menuitem', { name: 'dcs-academy-portal', exact: true }).click();
+  await expect(page).toHaveURL(/\/k8s\/ns\/dcs-academy-portal\/core~v1~Pod$/);
+  await expect(bubble).toContainText('Open the Academy database pod');
+
+  await page.locator(
+    'a[href="/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1"]'
+  ).click();
+  await expect(bubble).toContainText('Inspect the logs');
+  await page.locator(
+    'a[href="/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1/logs"]'
+  ).click();
+  await expect(bubble).toContainText('Open the container terminal');
+  await page.locator(
+    'a[href="/k8s/ns/dcs-academy-portal/pods/dcs-academy-portal-db-1/terminal"]'
+  ).click();
+  await expect(page.locator('.academy-guidance__controller')).toHaveCount(0);
+});
+
+test('filters and selects the Academy namespace in Continue mode', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/k8s/all-namespaces/core~v1~Pod');
+  const workloads = page.locator('[data-quickstart-id="qs-nav-workloads"]');
+  if ((await workloads.getAttribute('aria-expanded')) === 'true') await workloads.click();
+  await page.goto('/academy/lessons/academy-portal-namespace-filter-manual/start');
+
+  const bubble = page.locator('.academy-guidance__bubble');
+  const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
+  for (const title of [
+    'Open Workloads',
+    'Open Pods across all projects',
+    'Open the project selector',
+    'Filter for Academy namespaces',
+    'Select dcs-academy-portal',
+    'Open the Academy database pod',
+    'Inspect the logs',
+    'Open the container terminal'
+  ]) {
+    await expect(bubble).toContainText(title);
+    await expect(continueButton).toBeEnabled();
+    await continueButton.click();
+  }
+  await expect(page).toHaveURL(/\/pods\/dcs-academy-portal-db-1\/terminal$/);
+  await expect(page.locator('.academy-guidance__controller')).toHaveCount(0);
+});
+
+test('filters and selects the Academy namespace in timed mode', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/k8s/all-namespaces/core~v1~Pod');
+  const workloads = page.locator('[data-quickstart-id="qs-nav-workloads"]');
+  if ((await workloads.getAttribute('aria-expanded')) === 'true') await workloads.click();
+  await page.goto('/academy/lessons/academy-portal-namespace-filter-timed/start');
+
+  const bubble = page.locator('.academy-guidance__bubble');
+  await expect(bubble).toContainText('Open Workloads');
+  await expect(bubble).toContainText('Open Pods across all projects', { timeout: 8_000 });
+  await expect(bubble).toContainText('Open the project selector', { timeout: 8_000 });
+  await expect(bubble).toContainText('Filter for Academy namespaces', { timeout: 8_000 });
+  await expect(bubble).toContainText('Select dcs-academy-portal', { timeout: 8_000 });
+  await expect(bubble).toContainText('Open the Academy database pod', { timeout: 8_000 });
+  await expect(bubble).toContainText('Inspect the logs', { timeout: 8_000 });
+  await expect(bubble).toContainText('Open the container terminal', { timeout: 8_000 });
+  await expect(page).toHaveURL(/\/pods\/dcs-academy-portal-db-1\/terminal$/, { timeout: 8_000 });
+  await expect(page.locator('.academy-guidance__controller')).toHaveCount(0);
 });

@@ -20,7 +20,7 @@ purpose, completion text, and ordered steps. Each step provides:
 
 - a short title;
 - explanatory guidance describing what to do, why it matters, and how to proceed;
-- a trusted highlight target, currently a Quick Start ID or exact console link;
+- a trusted highlight target: a Quick Start ID, exact console link, or target-adapter element;
 - a completion transaction containing an operation, optional presentation policy, and independent
   verification condition.
 
@@ -131,11 +131,16 @@ Supported targets:
 
 - `quickStartId` highlights an element carrying the corresponding `data-quickstart-id`.
 - `href` highlights an anchor with the exact console-relative URL.
+- `consoleElement` resolves a named semantic console control through the selected OpenShift target
+  adapter. The current adapters provide `namespaceSelector`, `namespaceFilter`, and
+  `namespaceOption`; the latter takes the exact option text in `value`.
 
 Supported operations:
 
 - `activateTarget` activates the highlighted console control.
 - `navigate` opens the configured console-relative path through the target router adapter.
+- `fillTarget` enters its configured `value` into the highlighted input using the browser's native
+  input contract.
 
 If `presentation` is omitted, the learner performs the operation and the engine only verifies it.
 `initiator: continue` shows a Continue button and `initiator: timer` performs the operation after a
@@ -148,12 +153,24 @@ Supported verification conditions:
   Use this for controls such as expandable navigation sections, where a click alone does not prove
   that the required state was reached.
 - `route` advances when the browser reaches the configured exact path.
+- `targetValue` advances when the highlighted input contains the configured exact value.
+- `namespace` advances when the current console route is scoped to the configured namespace.
 
 The three Academy portal examples demonstrate the supported policies:
 
 - `academy-portal-container-access` is assisted.
 - `academy-portal-container-access-manual` performs each operation after Continue.
 - `academy-portal-container-access-timed` performs each operation after five seconds.
+
+The namespace-selector examples add semantic console controls and non-click input operations:
+
+- `academy-portal-namespace-filter` is assisted.
+- `academy-portal-namespace-filter-manual` performs each operation after Continue.
+- `academy-portal-namespace-filter-timed` performs each operation after five seconds.
+
+Presentation variants can share the assisted module definition. Use
+`createPresentationVariant` from `src/modules/variants.ts` to add a Continue or timed presentation
+policy to every step while keeping targets, operations, verification, and guidance text together.
 
 Do not put CSS selectors or executable behavior in external links. The launcher accepts only a
 registered module ID and resolves all behavior from the trusted module catalog.
@@ -184,7 +201,7 @@ the user navigates. The plugin is independently built, served, registered throug
 ## Target structure
 
 The lesson engine, module catalog, and UI are shared under `src/`. Version-specific dependency
-manifests and the small router adapter live under `targets/<target>/`. Deployment overlays under
+manifests plus route, navigation, and semantic-element adapters live under `targets/<target>/`. Deployment overlays under
 `deploy/overlays/<target>/` select an explicitly versioned image tag for the same target.
 
 | Target | OpenShift versions | React/router generation | Image tag |
@@ -205,10 +222,11 @@ bin/pluginctl list
 ## Compatibility boundary
 
 Navigation and Kubernetes state use supported console SDK APIs. Unconditional highlighting
-uses the console's `data-quickstart-id` DOM attributes because the SDK does not expose a
-programmatic spotlight API. That part is intentionally isolated in `GuidanceContext.tsx`
-and must be regression-tested for every OpenShift minor release. It does not modify core
-console code, but it is coupled to rendered console markup.
+uses console DOM attributes because the SDK does not expose a programmatic spotlight API.
+Version-specific selectors are isolated in `targets/<target>/elements.ts`, while the shared
+measurement and workflow behavior remains in `GuidanceContext.tsx`. These adapters must be
+regression-tested for every OpenShift minor release. They do not modify core console code, but are
+coupled to rendered console markup.
 
 Each target pins the matching `@openshift-console/dynamic-plugin-sdk` generation and declares a
 bounded console plugin API range. Add a new target only when a console release requires different

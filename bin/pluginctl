@@ -74,6 +74,7 @@ prepare_target() {
     "${ROOT}/webpack.config.ts" "${destination}/"
   cp "${target_path}/package.json" "${target_path}/package-lock.json" "${destination}/"
   cp -R "${ROOT}/src/." "${destination}/src/"
+  cp "${target_path}/elements.ts" "${destination}/src/platform/elements.ts"
   cp "${target_path}/navigation.ts" "${destination}/src/platform/navigation.ts"
   cp "${target_path}/routes.ts" "${destination}/src/platform/routes.ts"
 

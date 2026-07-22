@@ -1,9 +1,11 @@
 export type TrainingTarget =
   | { type: 'quickStartId'; value: string }
-  | { type: 'href'; value: string };
+  | { type: 'href'; value: string }
+  | { type: 'consoleElement'; id: string; value?: string };
 
 export type CompletionOperation =
   | { type: 'activateTarget' }
+  | { type: 'fillTarget'; value: string }
   | { type: 'navigate'; path: string };
 
 export type CompletionPresentation =
@@ -12,6 +14,8 @@ export type CompletionPresentation =
 
 export type CompletionVerification =
   | { type: 'targetAttribute'; attribute: string; value: string }
+  | { type: 'targetValue'; value: string }
+  | { type: 'namespace'; value: string }
   | { type: 'route'; path: string };
 
 export type StepCompletion = {
