@@ -4,6 +4,7 @@ import {
   useK8sWatchResource
 } from '@openshift-console/dynamic-plugin-sdk';
 import {
+  type CSSProperties,
   createContext,
   type FC,
   type PropsWithChildren,
@@ -43,6 +44,7 @@ type GuidanceSnapshot = {
   primaryResource?: TrainingResource;
   resourcePhase: string;
   step: number;
+  timerRemainingSeconds?: number;
 };
 
 type WatchedResource = K8sResourceCommon & {
@@ -84,6 +86,7 @@ const defaultValue: GuidanceValue = {
   startModule: () => false,
   step: 0,
   stop: () => undefined,
+  timerRemainingSeconds: undefined,
   openResourceTab: () => undefined
 };
 
@@ -141,6 +144,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   const [performedStep, setPerformedStep] = useState(-1);
   const [highlightId, setHighlightId] = useState('');
   const [resolvedHighlightId, setResolvedHighlightId] = useState('');
+  const [timerRemainingSeconds, setTimerRemainingSeconds] = useState<number>();
   const activeModule = getTrainingModule(activeModuleId);
   const resourceModule = activeModule ?? defaultTrainingModule;
   const primaryResource =
@@ -203,7 +207,6 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   }, []);
   const performCurrentStep = useCallback(() => {
     if (!canPerformCurrentStep || !currentStep?.complete.presentation) return;
-    setPerformedStep(step);
     const operation = currentStep.complete.operation;
     const verification = currentStep.complete.verify;
     const target = document.querySelector<HTMLElement>(selectorForTarget(currentStep.target));
@@ -214,6 +217,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       setStep((current) => (current === step ? current + 1 : current));
       return;
     }
+    setPerformedStep(step);
     if (operation.type === 'navigate') {
       navigate(resolveConsolePath(operation.path));
       return;
@@ -279,12 +283,24 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       !canPerformCurrentStep ||
       !presentation ||
       presentation.initiator !== 'timer'
-    ) return undefined;
+    ) {
+      setTimerRemainingSeconds(undefined);
+      return undefined;
+    }
     const match = presentation.delay.match(/^(\d+)(ms|s)$/);
     if (!match) return undefined;
     const duration = Number(match[1]) * (match[2] === 's' ? 1000 : 1);
+    const deadline = Date.now() + duration;
+    const updateCountdown = () => {
+      setTimerRemainingSeconds(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    };
+    updateCountdown();
+    const countdown = window.setInterval(updateCountdown, 250);
     const timer = window.setTimeout(performCurrentStep, duration);
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearInterval(countdown);
+      window.clearTimeout(timer);
+    };
   }, [active, canPerformCurrentStep, currentStep, performCurrentStep]);
 
   useEffect(() => {
@@ -319,9 +335,13 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   }, [active, activeModule, currentStep, step]);
 
   useEffect(() => {
+    if (completed) {
+      stop();
+      return;
+    }
     if (!active || !activeModule) return;
     sessionStorage.setItem(SESSION_KEY, JSON.stringify({ moduleId: activeModule.id, step }));
-  }, [active, activeModule, step]);
+  }, [active, activeModule, completed, step, stop]);
 
   return useMemo(
     () => ({
@@ -351,6 +371,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       startModule,
       step,
       stop,
+      timerRemainingSeconds,
       openResourceTab
     }),
     [
@@ -376,23 +397,33 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       start,
       startModule,
       step,
-      stop
+      stop,
+      timerRemainingSeconds
     ]
   );
 };
 
-type OverlayProps = {
+type TargetRect = {
+  bottom: number;
+  height: number;
+  left: number;
+  right: number;
+  top: number;
+  width: number;
+};
+
+type TargetProps = {
   targetSelector: string;
   onTargetState: (targetSelector: string, found: boolean) => void;
 };
 
-const GuidanceOverlay: FC<OverlayProps> = ({ targetSelector, onTargetState }) => {
-  const [style, setStyle] = useState<Record<string, number>>({});
+const useTargetRect = ({ targetSelector, onTargetState }: TargetProps) => {
+  const [targetRect, setTargetRect] = useState<TargetRect>();
 
   useEffect(() => {
     if (!targetSelector) {
       onTargetState('', false);
-      setStyle({});
+      setTargetRect(undefined);
       return undefined;
     }
 
@@ -403,11 +434,18 @@ const GuidanceOverlay: FC<OverlayProps> = ({ targetSelector, onTargetState }) =>
         const target = document.querySelector(targetSelector);
         onTargetState(targetSelector, Boolean(target));
         if (!target) {
-          setStyle({});
+          setTargetRect(undefined);
           return;
         }
         const rect = target.getBoundingClientRect();
-        setStyle({ height: rect.height, left: rect.left, top: rect.top, width: rect.width });
+        setTargetRect({
+          bottom: rect.bottom,
+          height: rect.height,
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          width: rect.width
+        });
       });
     };
 
@@ -425,7 +463,91 @@ const GuidanceOverlay: FC<OverlayProps> = ({ targetSelector, onTargetState }) =>
     };
   }, [onTargetState, targetSelector]);
 
-  return style.width ? <div className="academy-guidance__spotlight" style={style} /> : null;
+  return targetRect;
+};
+
+type BubblePlacement = 'above' | 'below' | 'left' | 'right';
+
+const positionBubble = (rect: TargetRect) => {
+  const gap = 16;
+  const margin = 12;
+  const width = Math.min(360, window.innerWidth - margin * 2);
+  const estimatedHeight = 220;
+  let placement: BubblePlacement = 'right';
+  let left = rect.right + gap;
+  let top = rect.top + rect.height / 2 - estimatedHeight / 2;
+
+  if (window.innerWidth - rect.right < width + gap) {
+    if (rect.left >= width + gap) {
+      placement = 'left';
+      left = rect.left - width - gap;
+    } else if (window.innerHeight - rect.bottom >= estimatedHeight + gap) {
+      placement = 'below';
+      left = rect.left + rect.width / 2 - width / 2;
+      top = rect.bottom + gap;
+    } else {
+      placement = 'above';
+      left = rect.left + rect.width / 2 - width / 2;
+      top = rect.top - estimatedHeight - gap;
+    }
+  }
+
+  return {
+    placement,
+    style: {
+      left: Math.max(margin, Math.min(left, window.innerWidth - width - margin)),
+      maxWidth: width,
+      top: Math.max(margin, Math.min(top, window.innerHeight - estimatedHeight - margin)),
+      width
+    } satisfies CSSProperties
+  };
+};
+
+const GuidanceTarget: FC<{ value: GuidanceValue }> = ({ value }) => {
+  const targetRect = useTargetRect({
+    targetSelector: value.highlightId,
+    onTargetState: value.reportHighlightTarget
+  });
+
+  if (!targetRect) return null;
+  const bubble = positionBubble(targetRect);
+
+  return (
+    <>
+      <div
+        className="academy-guidance__spotlight"
+        style={{
+          height: targetRect.height,
+          left: targetRect.left,
+          top: targetRect.top,
+          width: targetRect.width
+        }}
+      />
+      {value.active && !value.completed && value.currentStep ? (
+        <aside
+          className={`academy-guidance__bubble academy-guidance__bubble--${bubble.placement}`}
+          style={bubble.style}
+          aria-live="polite"
+        >
+          <strong>{value.currentStep.title}</strong>
+          <p>{value.currentStep.description}</p>
+          {value.currentStep.complete.presentation?.initiator === 'continue' ? (
+            <button
+              type="button"
+              disabled={!value.canPerformCurrentStep}
+              onClick={value.performCurrentStep}
+            >
+              Continue
+            </button>
+          ) : null}
+          {value.currentStep.complete.presentation?.initiator === 'timer' &&
+          value.timerRemainingSeconds !== undefined ? (
+            <small>Continuing in {value.timerRemainingSeconds}s</small>
+          ) : null}
+        </aside>
+      ) : null}
+    </>
+  );
 };
 
 const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) =>
@@ -436,30 +558,8 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) =>
         <p>{value.activeModule?.completionText}</p>
       ) : (
         <>
-          <p><strong>{value.currentStep?.title}</strong></p>
-          <p>{value.currentStep?.description}</p>
-          <small>
-            Step {value.step + 1} of {value.activeModule?.steps.length}
-          </small>
-          {value.currentStep?.complete.presentation?.initiator === 'continue' ? (
-            <p>
-              <button
-                type="button"
-                disabled={!value.canPerformCurrentStep}
-                onClick={value.performCurrentStep}
-              >
-                Continue
-              </button>
-            </p>
-          ) : null}
-          {value.currentStep?.complete.presentation?.initiator === 'timer' ? (
-            <p>
-              <small>Continuing in {value.currentStep.complete.presentation.delay}</small>
-            </p>
-          ) : null}
-          {value.currentStep?.complete.presentation && !value.canPerformCurrentStep ? (
-            <p><small>Waiting for the highlighted console target.</small></p>
-          ) : null}
+          <p>Step {value.step + 1} of {value.activeModule?.steps.length}</p>
+          <p><small>{value.highlightTargetFound ? 'Target ready' : 'Waiting for the console element…'}</small></p>
         </>
       )}
       <dl>
@@ -478,10 +578,7 @@ export const GuidanceProvider: FC<PropsWithChildren<{ value: GuidanceValue }>> =
 }) => (
   <GuidanceContext.Provider value={value}>
     {children}
-    <GuidanceOverlay
-      targetSelector={value.highlightId}
-      onTargetState={value.reportHighlightTarget}
-    />
+    <GuidanceTarget value={value} />
     <GuidanceController value={value} />
   </GuidanceContext.Provider>
 );

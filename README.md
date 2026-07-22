@@ -4,6 +4,8 @@ This is a multi-target OpenShift dynamic console plugin that demonstrates guidan
 which cannot be expressed by a native `ConsoleQuickStart`:
 
 - unconditional highlighting of console elements carrying `data-quickstart-id`;
+- an anchored guidance bubble for step instructions and presentation controls;
+- a stable workflow panel for progress, console state, and stopping the lesson;
 - opening console pages through the router;
 - switching route-backed resource tabs;
 - reading the current route, perspective, namespace, active tab, target availability,
@@ -25,6 +27,11 @@ purpose, completion text, and ordered steps. Each step provides:
 `module.schema.json` documents the authoring contract and enables editor validation. Add a module
 JSON file and register it in `src/modules/catalog.ts`; arbitrary selectors are not accepted from
 URLs.
+
+The renderer deliberately separates transient step guidance from persistent workflow state. The
+spotlight and guidance bubble share one target measurement observer, while the workflow panel
+remains fixed during console navigation. If a target temporarily disappears, the bubble is hidden
+and the workflow panel reports that it is waiting for the console element.
 
 ### Build a new module
 
@@ -132,7 +139,8 @@ Supported operations:
 
 If `presentation` is omitted, the learner performs the operation and the engine only verifies it.
 `initiator: continue` shows a Continue button and `initiator: timer` performs the operation after a
-validated duration such as `500ms` or `5s`.
+validated duration such as `500ms` or `5s`, with a visible countdown. Every workflow stops and
+clears its persisted session automatically when its final verification succeeds.
 
 Supported verification conditions:
 

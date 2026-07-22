@@ -21,6 +21,68 @@
   z-index: 9999;
 }
 
+.academy-guidance__bubble {
+  background: var(--pf-t--global--background--color--primary--default, #fff);
+  border: 1px solid var(--pf-t--global--border--color--default, #d2d2d2);
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgb(0 0 0 / 28%);
+  padding: 16px;
+  position: fixed;
+  z-index: 10000;
+}
+
+.academy-guidance__bubble::before {
+  background: inherit;
+  border-bottom: inherit;
+  border-left: inherit;
+  content: '';
+  height: 14px;
+  position: absolute;
+  transform: rotate(45deg);
+  width: 14px;
+}
+
+.academy-guidance__bubble--right::before {
+  left: -8px;
+  top: calc(50% - 7px);
+}
+
+.academy-guidance__bubble--left::before {
+  right: -8px;
+  top: calc(50% - 7px);
+  transform: rotate(225deg);
+}
+
+.academy-guidance__bubble--below::before {
+  left: calc(50% - 7px);
+  top: -8px;
+  transform: rotate(135deg);
+}
+
+.academy-guidance__bubble--above::before {
+  bottom: -8px;
+  left: calc(50% - 7px);
+  transform: rotate(315deg);
+}
+
+.academy-guidance__bubble p {
+  margin: 8px 0 12px;
+}
+
+.academy-guidance__bubble button {
+  background: var(--pf-t--global--color--brand--default, #06c);
+  border: 0;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  padding: 7px 14px;
+}
+
+.academy-guidance__bubble button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .academy-guidance__controller dl {
   display: grid;
   grid-template-columns: auto 1fr;
