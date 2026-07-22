@@ -2,13 +2,16 @@ import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin
 import { Alert, Content, PageSection } from '@patternfly/react-core';
 import type { FC } from 'react';
 import { useEffect } from 'react';
-import { useParams } from 'react-router';
+import { useLocation, useParams } from 'react-router';
 
 import { useGuidance } from '../guidance/GuidanceContext';
 import { getTrainingModule } from '../modules/catalog';
 
 const LessonLauncherPage: FC = () => {
-  const { moduleId = '' } = useParams();
+  const location = useLocation();
+  const routeParams = useParams() as { moduleId?: string };
+  const moduleId = routeParams.moduleId ??
+    decodeURIComponent(location.pathname.match(/^\/academy\/lessons\/([^/]+)\/start$/)?.[1] ?? '');
   const guidance = useGuidance();
   const module = getTrainingModule(moduleId);
 

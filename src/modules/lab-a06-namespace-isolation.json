@@ -1,0 +1,142 @@
+{
+  "$schema": "./module.schema.json",
+  "id": "lab-a06-namespace-isolation",
+  "title": "A06 — Namespace isolation (assisted)",
+  "description": "Compare the same-named ConfigMap in two namespaces to see the OpenShift project boundary.",
+  "completionText": "A06 companion complete: the same resource name was independently scoped in two namespaces.",
+  "context": {
+    "primaryResource": "firstConfigMap",
+    "resources": {
+      "firstConfigMap": {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "label": "First namespace ConfigMap",
+        "listPath": "/k8s/ns/dcs-academy-portal/core~v1~ConfigMap",
+        "name": "kube-root-ca.crt",
+        "namespace": "dcs-academy-portal",
+        "consolePath": "/k8s/ns/dcs-academy-portal/configmaps/kube-root-ca.crt"
+      },
+      "secondConfigMap": {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "label": "Second namespace ConfigMap",
+        "listPath": "/k8s/ns/academy-console-plugin/core~v1~ConfigMap",
+        "name": "kube-root-ca.crt",
+        "namespace": "academy-console-plugin",
+        "consolePath": "/k8s/ns/academy-console-plugin/configmaps/kube-root-ca.crt"
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "open-workloads",
+      "title": "Open Workloads",
+      "description": "OpenShift groups ConfigMaps under Workloads in the Administrator navigation.",
+      "target": { "type": "quickStartId", "value": "qs-nav-workloads" },
+      "complete": {
+        "operation": { "type": "activateTarget" },
+        "verify": { "type": "targetAttribute", "attribute": "aria-expanded", "value": "true" }
+      }
+    },
+    {
+      "id": "open-configmaps",
+      "title": "Open ConfigMaps across projects",
+      "description": "Start from the cluster-wide list, then use the project selector to establish an explicit namespace scope.",
+      "target": { "type": "consoleElement", "id": "navigationLink", "value": "ConfigMaps" },
+      "complete": {
+        "operation": { "type": "navigate", "path": "/k8s/all-namespaces/core~v1~ConfigMap" },
+        "verify": { "type": "route", "path": "/k8s/all-namespaces/core~v1~ConfigMap" }
+      }
+    },
+    {
+      "id": "open-first-selector",
+      "title": "Open the project selector",
+      "description": "The selected OpenShift project is the active Kubernetes namespace for this console view.",
+      "target": { "type": "consoleElement", "id": "namespaceSelector" },
+      "complete": {
+        "operation": { "type": "activateTarget" },
+        "verify": { "type": "targetAttribute", "attribute": "aria-expanded", "value": "true" }
+      }
+    },
+    {
+      "id": "filter-first-namespace",
+      "title": "Filter for the portal namespace",
+      "description": "Type dcs-academy to narrow the project list without changing namespace state yet.",
+      "target": { "type": "consoleElement", "id": "namespaceFilter" },
+      "complete": {
+        "operation": { "type": "fillTarget", "value": "dcs-academy" },
+        "verify": { "type": "targetValue", "value": "dcs-academy" }
+      }
+    },
+    {
+      "id": "select-first-namespace",
+      "title": "Select dcs-academy-portal",
+      "description": "Selecting the project scopes every resource list and action to dcs-academy-portal.",
+      "target": { "type": "consoleElement", "id": "namespaceOption", "value": "dcs-academy-portal" },
+      "complete": {
+        "operation": { "type": "activateTarget" },
+        "verify": { "type": "namespace", "value": "dcs-academy-portal" }
+      }
+    },
+    {
+      "id": "open-first-configmap",
+      "title": "Open kube-root-ca.crt in dcs-academy-portal",
+      "description": "This ConfigMap name belongs to the selected namespace and does not collide with copies elsewhere.",
+      "target": { "type": "href", "value": "/k8s/ns/dcs-academy-portal/configmaps/kube-root-ca.crt" },
+      "complete": {
+        "operation": { "type": "navigate", "path": "/k8s/ns/dcs-academy-portal/configmaps/kube-root-ca.crt" },
+        "verify": { "type": "route", "path": "/k8s/ns/dcs-academy-portal/configmaps/kube-root-ca.crt" }
+      }
+    },
+    {
+      "id": "open-second-selector",
+      "title": "Open the project selector again",
+      "description": "Change only the namespace scope while keeping the resource concept and name the same.",
+      "target": { "type": "consoleElement", "id": "namespaceSelector" },
+      "complete": {
+        "operation": { "type": "activateTarget" },
+        "verify": { "type": "targetAttribute", "attribute": "aria-expanded", "value": "true" }
+      }
+    },
+    {
+      "id": "filter-second-namespace",
+      "title": "Filter for the plugin namespace",
+      "description": "Type academy-console to find a second independent namespace on the same cluster.",
+      "target": { "type": "consoleElement", "id": "namespaceFilter" },
+      "complete": {
+        "operation": { "type": "fillTarget", "value": "academy-console" },
+        "verify": { "type": "targetValue", "value": "academy-console" }
+      }
+    },
+    {
+      "id": "select-second-namespace",
+      "title": "Select academy-console-plugin",
+      "description": "The console now addresses a different namespace with independent objects, quotas, and access rules.",
+      "target": { "type": "consoleElement", "id": "namespaceOption", "value": "academy-console-plugin" },
+      "complete": {
+        "operation": { "type": "activateTarget" },
+        "verify": { "type": "namespace", "value": "academy-console-plugin" }
+      }
+    },
+    {
+      "id": "filter-second-configmaps",
+      "title": "Filter for kube-root-ca.crt",
+      "description": "Filter the second namespace list to find its independent object with the same resource name.",
+      "target": { "type": "consoleElement", "id": "resourceSearch" },
+      "complete": {
+        "operation": { "type": "fillTarget", "value": "kube-root" },
+        "verify": { "type": "targetValue", "value": "kube-root" }
+      }
+    },
+    {
+      "id": "open-second-configmap",
+      "title": "Open kube-root-ca.crt in academy-console-plugin",
+      "description": "The identical name resolves to another object because namespace is part of resource identity.",
+      "target": { "type": "href", "value": "/k8s/ns/academy-console-plugin/configmaps/kube-root-ca.crt" },
+      "complete": {
+        "operation": { "type": "navigate", "path": "/k8s/ns/academy-console-plugin/configmaps/kube-root-ca.crt" },
+        "verify": { "type": "route", "path": "/k8s/ns/academy-console-plugin/configmaps/kube-root-ca.crt" }
+      }
+    }
+  ]
+}

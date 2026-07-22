@@ -1,62 +1,136 @@
 import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
-import { Button, Card, CardBody, CardTitle, Content, PageSection } from '@patternfly/react-core';
-import type { FC } from 'react';
+import {
+  Button,
+  Content,
+  DataList,
+  DataListAction,
+  DataListCell,
+  DataListItem,
+  DataListItemCells,
+  DataListItemRow,
+  FormSelect,
+  FormSelectOption,
+  Label,
+  PageSection,
+  SearchInput,
+  Toolbar,
+  ToolbarContent,
+  ToolbarItem
+} from '@patternfly/react-core';
+import { type FC, useMemo, useState } from 'react';
 
 import { useGuidance } from '../guidance/GuidanceContext';
-import { trainingModules } from '../modules/catalog';
+import { trainingModuleCatalog } from '../modules/catalog';
+import type { TrainingMode } from '../modules/types';
+import './GuidancePage.css';
+
+type ModeFilter = 'all' | TrainingMode;
+
+const modeLabels: Record<TrainingMode, string> = {
+  assisted: 'Assisted',
+  continue: 'Continue',
+  timed: 'Timed'
+};
+
+const modeColors: Record<TrainingMode, 'blue' | 'purple' | 'orange'> = {
+  assisted: 'blue',
+  continue: 'purple',
+  timed: 'orange'
+};
 
 const GuidancePage: FC = () => {
   const guidance = useGuidance();
+  const [search, setSearch] = useState('');
+  const [mode, setMode] = useState<ModeFilter>('all');
+  const visibleTours = useMemo(() => {
+    const query = search.trim().toLocaleLowerCase();
+    return trainingModuleCatalog.filter(({ module, mode: moduleMode }) =>
+      (mode === 'all' || moduleMode === mode) &&
+      (!query || `${module.title} ${module.description}`.toLocaleLowerCase().includes(query))
+    );
+  }, [mode, search]);
 
   return (
     <>
       <DocumentTitle>Academy guidance</DocumentTitle>
-      <ListPageHeader title="Academy guidance PoC" />
+      <ListPageHeader title="Academy tours" />
       <PageSection>
         <Content component="p">
-          This dynamic plugin demonstrates guidance capabilities that the native Quick Start
-          renderer does not provide. Start the lesson, then follow the highlighted console
-          elements. The lesson observes each page and tab you open and advances automatically.
+          Choose a guided tour of the OpenShift console. Assisted tours wait for your actions;
+          presentation tours perform each explained action after Continue or a countdown.
         </Content>
-        {trainingModules.map((module) => (
-          <Button key={module.id} variant="primary" onClick={() => guidance.startModule(module.id)}>
-            Start {module.title}
-          </Button>
-        ))}{' '}
-        <Button variant="secondary" onClick={() => guidance.highlight('qs-nav-workloads')}>
-          Highlight Workloads now
-        </Button>{' '}
-        <Button variant="link" onClick={guidance.clearHighlight}>Clear highlight</Button>
       </PageSection>
-      <PageSection>
-        <Card>
-          <CardTitle>Navigation controls</CardTitle>
-          <CardBody>
-            <Button onClick={() => guidance.openPage('/k8s/ns/dcs-academy-portal/core~v1~Pod')}>
-              Open Pods page
-            </Button>{' '}
-            <Button onClick={() => guidance.switchPodTab('details')}>Open pod details</Button>{' '}
-            <Button onClick={() => guidance.switchPodTab('logs')}>Switch to Logs</Button>{' '}
-            <Button onClick={() => guidance.switchPodTab('terminal')}>Switch to Terminal</Button>
-          </CardBody>
-        </Card>
-      </PageSection>
-      <PageSection>
-        <Card>
-          <CardTitle>Current console state</CardTitle>
-          <CardBody>
-            <dl>
-              <dt>Path</dt><dd><code>{guidance.path || '/'}</code></dd>
-              <dt>Perspective</dt><dd>{guidance.perspective || 'unknown'}</dd>
-              <dt>Namespace</dt><dd>{guidance.currentNamespace || 'none'}</dd>
-              <dt>Active route tab</dt><dd>{guidance.activeTab || 'none'}</dd>
-              <dt>Active module</dt><dd>{guidance.activeModule?.id || 'none'}</dd>
-              <dt>Academy database pod</dt><dd>{guidance.podPhase}</dd>
-              <dt>Highlight target</dt><dd>{guidance.highlightId || 'none'}</dd>
-              <dt>Target found</dt><dd>{String(guidance.highlightTargetFound)}</dd>
-            </dl>
-          </CardBody>
-        </Card>
+      <PageSection padding={{ default: 'noPadding' }}>
+        <Toolbar className="academy-tour-catalog__toolbar" clearAllFilters={() => {
+          setSearch('');
+          setMode('all');
+        }}>
+          <ToolbarContent>
+            <ToolbarItem className="academy-tour-catalog__search">
+              <SearchInput
+                aria-label="Search tours"
+                placeholder="Search tours"
+                value={search}
+                onChange={(_event, value) => setSearch(value)}
+                onClear={() => setSearch('')}
+              />
+            </ToolbarItem>
+            <ToolbarItem>
+              <FormSelect
+                aria-label="Filter tours by mode"
+                value={mode}
+                onChange={(_event, value) => setMode(value as ModeFilter)}
+              >
+                <FormSelectOption value="all" label="All modes" />
+                <FormSelectOption value="assisted" label="Assisted" />
+                <FormSelectOption value="continue" label="Continue" />
+                <FormSelectOption value="timed" label="Timed" />
+              </FormSelect>
+            </ToolbarItem>
+          </ToolbarContent>
+        </Toolbar>
+        {visibleTours.length ? (
+          <DataList aria-label="Academy tours" isCompact>
+            {visibleTours.map(({ module, mode: moduleMode }) => (
+              <DataListItem key={module.id} aria-labelledby={`${module.id}-title`}>
+                <DataListItemRow>
+                  <DataListItemCells
+                    dataListCells={[
+                      <DataListCell key="tour" width={3}>
+                        <strong id={`${module.id}-title`}>{module.title}</strong>
+                        <p className="academy-tour-catalog__description">{module.description}</p>
+                      </DataListCell>,
+                      <DataListCell key="mode" width={1}>
+                        <Label color={modeColors[moduleMode]}>{modeLabels[moduleMode]}</Label>
+                      </DataListCell>,
+                      <DataListCell key="steps" width={1}>
+                        {module.steps.length} steps
+                      </DataListCell>
+                    ]}
+                  />
+                  <DataListAction
+                    aria-label={`Actions for ${module.title}`}
+                    aria-labelledby={`${module.id}-title ${module.id}-start`}
+                    id={`${module.id}-start`}
+                  >
+                    <Button
+                      aria-label={`Start ${module.title}`}
+                      variant="primary"
+                      onClick={() => guidance.startModule(module.id)}
+                    >
+                      Start tour
+                    </Button>
+                  </DataListAction>
+                </DataListItemRow>
+              </DataListItem>
+            ))}
+          </DataList>
+        ) : (
+          <div className="academy-tour-catalog__empty">
+            <strong>No matching tours</strong>
+            <p>Adjust the search text or selected mode.</p>
+          </div>
+        )}
       </PageSection>
     </>
   );

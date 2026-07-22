@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: academy-guidance
+  namespace: academy-console-plugin
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"academy-guidance:0.1.0-ocp4.22","namespace":"academy-console-plugin"},"fieldPath":"spec.template.spec.containers[?(@.name==\"plugin\")].image"}]
+spec:
+  template:
+    spec:
+      containers:
+        - name: plugin
+          image: image-registry.openshift-image-registry.svc:5000/academy-console-plugin/academy-guidance:0.1.0-ocp4.22
