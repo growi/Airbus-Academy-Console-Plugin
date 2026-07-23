@@ -2,6 +2,7 @@ import academyPortalContainerAccess from './academy-portal-container-access.json
 import academyPortalContainerAccessManual from './academy-portal-container-access-manual.json';
 import academyPortalContainerAccessTimed from './academy-portal-container-access-timed.json';
 import academyPortalNamespaceFilter from './academy-portal-namespace-filter.json';
+import educatesSessionPods from './educates-session-pods.json';
 import labA06NamespaceIsolation from './lab-a06-namespace-isolation.json';
 import labA08OpenShiftConsole from './lab-a08-openshift-console.json';
 import type { TrainingMode, TrainingModule, TrainingModuleCatalogEntry } from './types';
@@ -79,7 +80,8 @@ const modules = [
   a08Timed,
   a06Module,
   a06Manual,
-  a06Timed
+  a06Timed,
+  educatesSessionPods as TrainingModule
 ];
 
 export const trainingModules = Object.freeze(modules);

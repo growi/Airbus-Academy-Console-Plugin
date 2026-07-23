@@ -17,9 +17,11 @@ import {
 import { useLocation } from 'react-router';
 
 import { defaultTrainingModule, getTrainingModule } from '../modules/catalog';
+import { instantiateTrainingModule } from '../modules/runtime';
 import type {
   CompletionVerification,
   TrainingModule,
+  TrainingModuleParameters,
   TrainingResource,
   TrainingStep,
   TrainingTarget
@@ -36,6 +38,7 @@ type GuidanceSnapshot = {
   activeModule?: TrainingModule;
   activeTab: string;
   canPerformCurrentStep: boolean;
+  canReturnToOpener: boolean;
   completed: boolean;
   currentStep?: TrainingStep;
   currentNamespace: string;
@@ -56,12 +59,13 @@ type WatchedResource = K8sResourceCommon & {
 
 type GuidanceValue = GuidanceSnapshot & {
   clearHighlight: () => void;
+  completeModule: () => void;
   highlight: (targetId: string) => void;
   openPage: (path: string) => void;
   performCurrentStep: () => void;
   reportHighlightTarget: (targetKey: string, found: boolean) => void;
   start: () => void;
-  startModule: (moduleId: string) => boolean;
+  startModule: (moduleId: string, parameters?: TrainingModuleParameters) => boolean;
   stop: () => void;
   openResourceTab: (tab: string) => void;
 };
@@ -71,7 +75,9 @@ const defaultValue: GuidanceValue = {
   activeModule: undefined,
   activeTab: '',
   canPerformCurrentStep: false,
+  canReturnToOpener: false,
   clearHighlight: () => undefined,
+  completeModule: () => undefined,
   completed: false,
   currentStep: undefined,
   currentNamespace: '',
@@ -156,10 +162,15 @@ const loadStoredLesson = () => {
   try {
     const stored = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null') as {
       moduleId?: string;
+      parameters?: TrainingModuleParameters;
       step?: number;
     } | null;
     if (!stored?.moduleId || !getTrainingModule(stored.moduleId)) return null;
-    return { moduleId: stored.moduleId, step: Math.max(0, stored.step ?? 0) };
+    return {
+      moduleId: stored.moduleId,
+      parameters: stored.parameters ?? {},
+      step: Math.max(0, stored.step ?? 0)
+    };
   } catch {
     return null;
   }
@@ -172,12 +183,17 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   const [storedLesson] = useState(loadStoredLesson);
   const [active, setActive] = useState(Boolean(storedLesson));
   const [activeModuleId, setActiveModuleId] = useState(storedLesson?.moduleId ?? '');
+  const [activeModuleParameters, setActiveModuleParameters] =
+    useState<TrainingModuleParameters>(storedLesson?.parameters ?? {});
   const [step, setStep] = useState(storedLesson?.step ?? 0);
   const [performedStep, setPerformedStep] = useState(-1);
   const [highlightTarget, setHighlightTarget] = useState<TrainingTarget>();
   const [resolvedHighlightId, setResolvedHighlightId] = useState('');
   const [timerRemainingSeconds, setTimerRemainingSeconds] = useState<number>();
-  const activeModule = getTrainingModule(activeModuleId);
+  const activeModule = useMemo(() => {
+    const module = getTrainingModule(activeModuleId);
+    return module ? instantiateTrainingModule(module, activeModuleParameters) : undefined;
+  }, [activeModuleId, activeModuleParameters]);
   const resourceModule = activeModule ?? defaultTrainingModule;
   const primaryResource =
     resourceModule.context.resources[resourceModule.context.primaryResource];
@@ -193,6 +209,12 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   });
   const currentStep = activeModule?.steps[step];
   const completed = Boolean(active && activeModule && step >= activeModule.steps.length);
+  const canReturnToOpener = Boolean(
+    completed &&
+    activeModule?.onComplete?.action === 'returnToOpener' &&
+    window.opener &&
+    !window.opener.closed
+  );
   const highlightId = targetKey(highlightTarget);
   const highlightTargetFound = Boolean(highlightId && resolvedHighlightId === highlightId);
   const canPerformCurrentStep = Boolean(
@@ -217,11 +239,15 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     },
     [navigate, primaryResource]
   );
-  const startModule = useCallback((moduleId: string) => {
+  const startModule = useCallback((
+    moduleId: string,
+    parameters: TrainingModuleParameters = {}
+  ) => {
     const module = getTrainingModule(moduleId);
-    if (!module) return false;
+    if (!module || !instantiateTrainingModule(module, parameters)) return false;
     setActive(true);
     setActiveModuleId(module.id);
+    setActiveModuleParameters(parameters);
     setStep(0);
     setPerformedStep(-1);
     setHighlightTarget(module.steps[0]?.target);
@@ -233,11 +259,21 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   const stop = useCallback(() => {
     setActive(false);
     setActiveModuleId('');
+    setActiveModuleParameters({});
     setStep(0);
     setPerformedStep(-1);
     setHighlightTarget(undefined);
     sessionStorage.removeItem(SESSION_KEY);
   }, []);
+  const completeModule = useCallback(() => {
+    if (
+      activeModule?.onComplete?.action !== 'returnToOpener' ||
+      !window.opener ||
+      window.opener.closed
+    ) return;
+    window.opener.focus();
+    window.setTimeout(() => window.close(), 0);
+  }, [activeModule]);
   const performCurrentStep = useCallback(() => {
     if (!canPerformCurrentStep || !currentStep?.complete.presentation) return;
     const verification = currentStep.complete.verify;
@@ -397,13 +433,21 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   }, [active, activeModule, currentStep, step]);
 
   useEffect(() => {
-    if (completed) {
+    if (!active || !activeModule) return;
+    if (completed && !activeModule.onComplete) {
       stop();
       return;
     }
-    if (!active || !activeModule) return;
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ moduleId: activeModule.id, step }));
-  }, [active, activeModule, completed, step, stop]);
+    if (completed) {
+      sessionStorage.removeItem(SESSION_KEY);
+      return;
+    }
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+      moduleId: activeModule.id,
+      parameters: activeModuleParameters,
+      step
+    }));
+  }, [active, activeModule, activeModuleParameters, completed, step, stop]);
 
   return useMemo(
     () => ({
@@ -411,7 +455,9 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       activeModule,
       activeTab: parseTab(location.pathname, primaryResource),
       canPerformCurrentStep,
+      canReturnToOpener,
       clearHighlight,
+      completeModule,
       completed,
       currentStep,
       currentNamespace: parseNamespace(location.pathname),
@@ -441,7 +487,9 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       active,
       activeModule,
       canPerformCurrentStep,
+      canReturnToOpener,
       clearHighlight,
+      completeModule,
       completed,
       currentStep,
       highlight,
@@ -678,7 +726,18 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) =>
     <aside className="academy-guidance__controller" aria-live="polite">
       <strong>{value.activeModule?.title ?? 'Academy guidance'}</strong>
       {value.completed ? (
-        <p>{value.activeModule?.completionText}</p>
+        <>
+          <p>{value.activeModule?.completionText}</p>
+          {value.activeModule?.onComplete?.action === 'returnToOpener' ? (
+            value.canReturnToOpener ? (
+              <button type="button" onClick={value.completeModule}>
+                {value.activeModule.onComplete.label ?? 'Return to lesson'}
+              </button>
+            ) : (
+              <p><small>The lesson tab is unavailable. Close this tab to return manually.</small></p>
+            )
+          ) : null}
+        </>
       ) : (
         <>
           <p>Step {value.step + 1} of {value.activeModule?.steps.length}</p>

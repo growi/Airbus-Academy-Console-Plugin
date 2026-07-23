@@ -196,6 +196,32 @@ Any trusted application can start a registered module by linking to:
 https://<console-host>/academy/lessons/<module-id>/start
 ```
 
+Modules can declare a trusted runtime namespace with `"parameters": ["namespace"]` and use
+`${namespace}` in resource names and console paths. Pass the concrete Educates session namespace
+in the launcher URL:
+
+```text
+https://<console-host>/academy/lessons/educates-session-pods/start?namespace=<session-namespace>
+```
+
+The launcher accepts Kubernetes namespace names only. Runtime values are validated before the
+module starts and are persisted with the active lesson while the user navigates through the
+console. Parameterized modules remain visible in the tour catalog, but their start button is
+disabled because the required context must come from the external lesson link.
+
+An externally launched module can keep its completed state visible and offer a return action:
+
+```json
+"onComplete": {
+  "action": "returnToOpener",
+  "label": "Return to Academy lesson"
+}
+```
+
+The action focuses the page that opened the console and closes the console tab. If the browser
+did not preserve `window.opener`, the completion panel tells the learner to close the tab
+manually. Modules without `onComplete` retain the default behavior and stop automatically.
+
 For this PoC:
 
 ```text

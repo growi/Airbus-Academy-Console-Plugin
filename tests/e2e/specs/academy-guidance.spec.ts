@@ -71,7 +71,7 @@ test('searches and filters the registered tour catalog', async ({ page }) => {
   await page.goto('/academy/guidance');
 
   const tours = page.getByRole('list', { name: 'Academy tours' });
-  await expect(tours.getByRole('listitem')).toHaveCount(12);
+  await expect(tours.getByRole('listitem')).toHaveCount(13);
 
   const search = page.getByRole('textbox', { name: 'Search tours' });
   await search.fill('Select the Academy namespace');
@@ -92,6 +92,35 @@ test('searches and filters the registered tour catalog', async ({ page }) => {
   }).click();
   await expect(page.locator('.academy-guidance__controller')).toContainText('Step 1 of 8');
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
+});
+
+test('starts a tour with a runtime Educates namespace', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  const popupPromise = page.waitForEvent('popup');
+  await page.evaluate(
+    () => window.open(
+      '/academy/lessons/educates-session-pods/start?namespace=academy-console-plugin',
+      '_blank'
+    )
+  );
+  const popup = await popupPromise;
+
+  const bubble = popup.locator('.academy-guidance__bubble');
+  await expect(bubble).toContainText('Open Workloads');
+  await expandWorkloads(popup);
+  await expect(bubble).toContainText('Open session Pods');
+
+  await popup.getByRole('link', { name: 'Pods', exact: true }).click();
+  await expect(popup).toHaveURL(
+    /\/k8s\/ns\/academy-console-plugin\/core~v1~Pod$/
+  );
+  const controller = popup.locator('.academy-guidance__controller');
+  await expect(controller).toContainText('Lesson complete');
+  const popupClosed = popup.waitForEvent('close');
+  await popup.getByRole('button', { name: 'Return to Academy lesson' }).click();
+  await popupClosed;
+  await expect(page).toHaveURL(/\/academy\/guidance$/);
 });
 
 test('presents the A08 OpenShift console tour', async ({ page }) => {

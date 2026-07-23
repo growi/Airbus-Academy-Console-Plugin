@@ -91,7 +91,9 @@ const GuidancePage: FC = () => {
         </Toolbar>
         {visibleTours.length ? (
           <DataList aria-label="Academy tours" isCompact>
-            {visibleTours.map(({ module, mode: moduleMode }) => (
+            {visibleTours.map(({ module, mode: moduleMode }) => {
+              const requiresParameters = Boolean(module.parameters?.length);
+              return (
               <DataListItem key={module.id} aria-labelledby={`${module.id}-title`}>
                 <DataListItemRow>
                   <DataListItemCells
@@ -114,16 +116,20 @@ const GuidancePage: FC = () => {
                     id={`${module.id}-start`}
                   >
                     <Button
-                      aria-label={`Start ${module.title}`}
+                      aria-label={requiresParameters
+                        ? `${module.title} requires an external lesson link`
+                        : `Start ${module.title}`}
+                      isDisabled={requiresParameters}
                       variant="primary"
                       onClick={() => guidance.startModule(module.id)}
                     >
-                      Start tour
+                      {requiresParameters ? 'Start from lesson' : 'Start tour'}
                     </Button>
                   </DataListAction>
                 </DataListItemRow>
               </DataListItem>
-            ))}
+              );
+            })}
           </DataList>
         ) : (
           <div className="academy-tour-catalog__empty">
