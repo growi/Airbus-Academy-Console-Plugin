@@ -16,9 +16,12 @@ import {
 } from 'react';
 import { useLocation } from 'react-router';
 
-import { defaultTrainingModule, getTrainingModule } from '../modules/catalog';
+import { isAllowedReturnUrl, resolveLab, useAcademySettings, useConsoleLabs } from '../modules/labs';
 import type {
+  AcademySettings,
   CompletionVerification,
+  LabParameters,
+  TrainingMode,
   TrainingModule,
   TrainingResource,
   TrainingStep,
@@ -28,24 +31,41 @@ import { resolveConsoleElement } from '../platform/elements';
 import { useConsoleNavigation } from '../platform/navigation';
 import { resolveConsolePath, resolveConsoleTargetPaths } from '../platform/routes';
 import './guidance.css';
+import { pathsMatch, pathVariants } from './paths';
 
-const SESSION_KEY = 'academy-guidance.active-module';
+const SESSION_KEY = 'academy-guidance.active-lab';
+
+export type LabLaunchOptions = {
+  parameters: LabParameters;
+  mode?: TrainingMode;
+  returnUrl?: string;
+};
+
+type StoredLesson = {
+  labId: string;
+  step: number;
+  parameters: LabParameters;
+  mode?: TrainingMode;
+  returnUrl?: string;
+};
 
 type GuidanceSnapshot = {
   active: boolean;
   activeModule?: TrainingModule;
   activeTab: string;
-  canPerformCurrentStep: boolean;
   completed: boolean;
   currentStep?: TrainingStep;
   currentNamespace: string;
   highlightId: string;
   highlightTarget?: TrainingTarget;
   highlightTargetFound: boolean;
+  labsLoaded: boolean;
   path: string;
   perspective: string;
   primaryResource?: TrainingResource;
   resourcePhase: string;
+  returnUrl: string;
+  settings: AcademySettings;
   step: number;
   timerRemainingSeconds?: number;
 };
@@ -55,43 +75,37 @@ type WatchedResource = K8sResourceCommon & {
 };
 
 type GuidanceValue = GuidanceSnapshot & {
-  clearHighlight: () => void;
-  highlight: (targetId: string) => void;
-  openPage: (path: string) => void;
+  goBack: () => void;
   performCurrentStep: () => void;
   reportHighlightTarget: (targetKey: string, found: boolean) => void;
-  start: () => void;
-  startModule: (moduleId: string) => boolean;
+  startLab: (labId: string, options: LabLaunchOptions) => boolean;
   stop: () => void;
-  openResourceTab: (tab: string) => void;
 };
 
 const defaultValue: GuidanceValue = {
   active: false,
   activeModule: undefined,
   activeTab: '',
-  canPerformCurrentStep: false,
-  clearHighlight: () => undefined,
   completed: false,
   currentStep: undefined,
   currentNamespace: '',
-  highlight: () => undefined,
+  goBack: () => undefined,
   highlightId: '',
   highlightTarget: undefined,
   highlightTargetFound: false,
-  openPage: () => undefined,
-  performCurrentStep: () => undefined,
+  labsLoaded: false,
   path: '',
+  performCurrentStep: () => undefined,
   perspective: '',
   primaryResource: undefined,
   resourcePhase: '',
   reportHighlightTarget: () => undefined,
-  start: () => undefined,
-  startModule: () => false,
+  returnUrl: '',
+  settings: { portalUrl: '', portalLinkText: '' },
+  startLab: () => false,
   step: 0,
   stop: () => undefined,
-  timerRemainingSeconds: undefined,
-  openResourceTab: () => undefined
+  timerRemainingSeconds: undefined
 };
 
 const GuidanceContext = createContext<GuidanceValue>(defaultValue);
@@ -101,7 +115,7 @@ const parseNamespace = (path: string) =>
 
 const parseTab = (path: string, resource?: TrainingResource) => {
   const tab = path.match(/\/(details|logs|terminal)$/)?.[1];
-  return tab ?? (resource && path === resource.consolePath ? 'details' : '');
+  return tab ?? (resource && pathsMatch(path, resource.consolePath) ? 'details' : '');
 };
 
 const parseApiVersion = (apiVersion: string) => {
@@ -111,7 +125,13 @@ const parseApiVersion = (apiVersion: string) => {
   return { group, version };
 };
 
-const targetKey = (target?: TrainingTarget) => target ? JSON.stringify(target) : '';
+const targetKey = (target?: TrainingTarget) => (target ? JSON.stringify(target) : '');
+
+const hrefSelector = (path: string) =>
+  [resolveConsolePath(path), ...resolveConsoleTargetPaths(path), ...pathVariants(path)]
+    .filter((candidate) => candidate.startsWith('/'))
+    .map((candidate) => `a[href="${candidate}"]`)
+    .join(', ');
 
 const findTarget = (target?: TrainingTarget) => {
   if (!target) return null;
@@ -121,18 +141,33 @@ const findTarget = (target?: TrainingTarget) => {
   if (target.type === 'consoleElement') {
     return resolveConsoleElement(target.id, target.value);
   }
-  const selector = resolveConsoleTargetPaths(target.value)
-    .map((path) => `a[href="${path}"]`)
-    .join(', ');
-  return document.querySelector<HTMLElement>(selector);
+  return document.querySelector<HTMLElement>(hrefSelector(target.value));
 };
 
 const routeMatches = (pathname: string, path: string) => {
-  const expectedPath = resolveConsolePath(path);
-  const expectedPaths = new Set([expectedPath, ...resolveConsoleTargetPaths(expectedPath)]);
-  return [pathname, ...resolveConsoleTargetPaths(pathname)].some((candidate) =>
-    expectedPaths.has(candidate)
+  const expected = resolveConsolePath(path);
+  return (
+    pathsMatch(pathname, expected) ||
+    resolveConsoleTargetPaths(expected).some((candidate) => pathsMatch(pathname, candidate))
   );
+};
+
+/**
+ * Console markup nests the element that actually carries the state inside (or around) the
+ * element a target resolves to — the aria-expanded lives on the toggle button, the value on
+ * the input inside the wrapper. Verification looks in both directions so a markup change
+ * between console releases degrades into a Continue click rather than a stuck step.
+ */
+const elementWithAttribute = (target: HTMLElement | null, attribute: string) => {
+  if (!target) return null;
+  if (target.hasAttribute(attribute)) return target;
+  return target.closest<HTMLElement>(`[${attribute}]`) ??
+    target.querySelector<HTMLElement>(`[${attribute}]`);
+};
+
+const inputForTarget = (target: HTMLElement | null) => {
+  if (target instanceof HTMLInputElement) return target;
+  return target?.querySelector<HTMLInputElement>('input') ?? null;
 };
 
 const verificationSatisfied = (
@@ -146,20 +181,35 @@ const verificationSatisfied = (
     case 'namespace':
       return parseNamespace(pathname) === verification.value;
     case 'targetValue':
-      return target instanceof HTMLInputElement && target.value === verification.value;
+      return inputForTarget(target)?.value === verification.value;
     case 'targetAttribute':
-      return target?.getAttribute(verification.attribute) === verification.value;
+      return (
+        elementWithAttribute(target, verification.attribute)?.getAttribute(
+          verification.attribute
+        ) === verification.value
+      );
   }
 };
 
-const loadStoredLesson = () => {
+const fillInput = (target: HTMLElement | null, value: string) => {
+  const input = inputForTarget(target);
+  if (!input) return;
+  const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+  valueSetter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+};
+
+const loadStoredLesson = (): StoredLesson | null => {
   try {
-    const stored = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null') as {
-      moduleId?: string;
-      step?: number;
-    } | null;
-    if (!stored?.moduleId || !getTrainingModule(stored.moduleId)) return null;
-    return { moduleId: stored.moduleId, step: Math.max(0, stored.step ?? 0) };
+    const stored = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? 'null') as StoredLesson | null;
+    if (!stored?.labId) return null;
+    return {
+      labId: stored.labId,
+      mode: stored.mode,
+      parameters: stored.parameters ?? {},
+      returnUrl: stored.returnUrl,
+      step: Math.max(0, stored.step ?? 0)
+    };
   } catch {
     return null;
   }
@@ -169,139 +219,150 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   const location = useLocation();
   const navigate = useConsoleNavigation();
   const [perspective] = useActivePerspective();
-  const [storedLesson] = useState(loadStoredLesson);
-  const [active, setActive] = useState(Boolean(storedLesson));
-  const [activeModuleId, setActiveModuleId] = useState(storedLesson?.moduleId ?? '');
-  const [step, setStep] = useState(storedLesson?.step ?? 0);
-  const [performedStep, setPerformedStep] = useState(-1);
-  const [highlightTarget, setHighlightTarget] = useState<TrainingTarget>();
+  const { labs, loaded: labsLoaded } = useConsoleLabs();
+  const settings = useAcademySettings();
+  const [lesson, setLesson] = useState<StoredLesson | null>(loadStoredLesson);
+  /** Step the learner returned to with Back; auto-advance stays off until they leave it. */
+  const [heldStep, setHeldStep] = useState(-1);
   const [resolvedHighlightId, setResolvedHighlightId] = useState('');
   const [timerRemainingSeconds, setTimerRemainingSeconds] = useState<number>();
-  const activeModule = getTrainingModule(activeModuleId);
-  const resourceModule = activeModule ?? defaultTrainingModule;
-  const primaryResource =
-    resourceModule.context.resources[resourceModule.context.primaryResource];
-  const resourceApi = parseApiVersion(primaryResource.apiVersion);
-  const [resource, resourceLoaded, resourceError] = useK8sWatchResource<WatchedResource>({
-    groupVersionKind: {
-      ...(resourceApi.group ? { group: resourceApi.group } : {}),
-      version: resourceApi.version,
-      kind: primaryResource.kind
-    },
-    name: primaryResource.name,
-    namespace: primaryResource.namespace
-  });
-  const currentStep = activeModule?.steps[step];
-  const completed = Boolean(active && activeModule && step >= activeModule.steps.length);
+
+  const activeModule = useMemo(() => {
+    if (!lesson) return undefined;
+    const { module } = resolveLab(
+      labs.find((lab) => lab.metadata?.name === lesson.labId),
+      lesson.parameters
+    );
+    return module && lesson.mode ? { ...module, mode: lesson.mode } : module;
+  }, [labs, lesson]);
+
+  const step = lesson?.step ?? 0;
+  const completed = Boolean(activeModule && step >= activeModule.steps.length);
+  const currentStep = completed ? undefined : activeModule?.steps[step];
+  const highlightTarget = currentStep?.target;
   const highlightId = targetKey(highlightTarget);
   const highlightTargetFound = Boolean(highlightId && resolvedHighlightId === highlightId);
-  const canPerformCurrentStep = Boolean(
-    active && currentStep?.complete.presentation && highlightTargetFound
+
+  const primaryResource = activeModule?.context?.resources[activeModule.context.primaryResource];
+  const resourceApi = primaryResource ? parseApiVersion(primaryResource.apiVersion) : undefined;
+  const [resource, resourceLoaded, resourceError] = useK8sWatchResource<WatchedResource>(
+    primaryResource && resourceApi
+      ? {
+          groupVersionKind: {
+            ...(resourceApi.group ? { group: resourceApi.group } : {}),
+            version: resourceApi.version,
+            kind: primaryResource.kind
+          },
+          name: primaryResource.name,
+          namespace: primaryResource.namespace
+        }
+      : null
   );
 
-  const openPage = useCallback((path: string) => navigate(resolveConsolePath(path)), [navigate]);
-  const highlight = useCallback(
-    (targetId: string) => setHighlightTarget({ type: 'quickStartId', value: targetId }),
-    []
-  );
-  const clearHighlight = useCallback(() => setHighlightTarget(undefined), []);
+  const advanceFrom = useCallback((completedStep: number) => {
+    setLesson((current) =>
+      current && current.step === completedStep
+        ? { ...current, step: completedStep + 1 }
+        : current
+    );
+  }, []);
+
   const reportHighlightTarget = useCallback((resolvedTargetKey: string, found: boolean) => {
     setResolvedHighlightId(found ? resolvedTargetKey : '');
   }, []);
-  const openResourceTab = useCallback(
-    (tab: string) => {
-      const path = tab === 'details'
-        ? primaryResource.consolePath
-        : primaryResource.tabs?.[tab];
-      if (path) navigate(resolveConsolePath(path));
-    },
-    [navigate, primaryResource]
-  );
-  const startModule = useCallback((moduleId: string) => {
-    const module = getTrainingModule(moduleId);
-    if (!module) return false;
-    setActive(true);
-    setActiveModuleId(module.id);
-    setStep(0);
-    setPerformedStep(-1);
-    setHighlightTarget(module.steps[0]?.target);
-    return true;
-  }, []);
-  const start = useCallback(() => {
-    startModule(defaultTrainingModule.id);
-  }, [startModule]);
+
   const stop = useCallback(() => {
-    setActive(false);
-    setActiveModuleId('');
-    setStep(0);
-    setPerformedStep(-1);
-    setHighlightTarget(undefined);
+    setLesson(null);
+    setHeldStep(-1);
     sessionStorage.removeItem(SESSION_KEY);
   }, []);
+
+  const startLab = useCallback(
+    (labId: string, options: LabLaunchOptions) => {
+      const lab = labs.find((candidate) => candidate.metadata?.name === labId);
+      const { module } = resolveLab(lab, options.parameters);
+      if (!module) return false;
+      setHeldStep(-1);
+      setLesson({
+        labId,
+        mode: options.mode,
+        parameters: options.parameters,
+        returnUrl: options.returnUrl,
+        step: 0
+      });
+      return true;
+    },
+    [labs]
+  );
+
+  /**
+   * Continue is the failsafe: it performs the step's operation when the console is not already
+   * in the desired state and then advances regardless of whether verification ever fires, so a
+   * detector that breaks on a console update costs one click instead of the whole lab.
+   */
   const performCurrentStep = useCallback(() => {
-    if (!canPerformCurrentStep || !currentStep?.complete.presentation) return;
-    const verification = currentStep.complete.verify;
+    if (!currentStep) return;
+    setHeldStep(-1);
     const target = findTarget(currentStep.target);
-    const verificationAlreadySatisfied = verificationSatisfied(
-      verification,
-      target,
-      location.pathname
-    );
-    if (verificationAlreadySatisfied) {
-      setStep((current) => (current === step ? current + 1 : current));
-      return;
+    if (!verificationSatisfied(currentStep.complete.verify, target, location.pathname)) {
+      const operation = currentStep.complete.operation;
+      if (operation.type === 'navigate') navigate(resolveConsolePath(operation.path));
+      else if (operation.type === 'fillTarget') fillInput(target, operation.value);
+      else target?.click();
     }
-    setPerformedStep(step);
-  }, [canPerformCurrentStep, currentStep, location.pathname, step]);
+    advanceFrom(step);
+  }, [advanceFrom, currentStep, location.pathname, navigate, step]);
+
+  const goBack = useCallback(() => {
+    if (step === 0) return;
+    setHeldStep(step - 1);
+    setLesson((current) =>
+      current && current.step === step ? { ...current, step: step - 1 } : current
+    );
+  }, [step]);
 
   useEffect(() => {
-    setHighlightTarget(active ? currentStep?.target : undefined);
-    if (!active || !currentStep?.complete.presentation) return undefined;
+    if (!currentStep) return undefined;
     const frame = requestAnimationFrame(() => {
       findTarget(currentStep.target)?.scrollIntoView({ block: 'nearest' });
     });
     return () => cancelAnimationFrame(frame);
-  }, [active, currentStep]);
+  }, [currentStep]);
 
   useEffect(() => {
     const verification = currentStep?.complete.verify;
-    if (
-      !active ||
-      !currentStep ||
-      !verification ||
-      !['namespace', 'route'].includes(verification.type) ||
-      (currentStep.complete.presentation && performedStep !== step)
-    ) return;
-    if (verificationSatisfied(verification, findTarget(currentStep.target), location.pathname)) {
-      if (verification.type === 'route') {
-        const canonicalPath = resolveConsolePath(verification.path);
-        if (location.pathname !== canonicalPath) navigate(canonicalPath);
-      }
-      setStep((current) => current + 1);
+    if (!verification || !['namespace', 'route'].includes(verification.type)) return;
+    const satisfied = verificationSatisfied(
+      verification,
+      findTarget(currentStep.target),
+      location.pathname
+    );
+    if (!satisfied) {
+      if (heldStep === step) setHeldStep(-1);
+      return;
     }
-  }, [active, currentStep, location.pathname, navigate, performedStep, step]);
+    if (heldStep !== step) advanceFrom(step);
+  }, [advanceFrom, currentStep, heldStep, location.pathname, step]);
 
   useEffect(() => {
     const verification = currentStep?.complete.verify;
-    if (
-      !active ||
-      !currentStep ||
-      !verification ||
-      !['targetAttribute', 'targetValue'].includes(verification.type) ||
-      (currentStep.complete.presentation && performedStep !== step)
-    ) {
+    if (!verification || !['targetAttribute', 'targetValue'].includes(verification.type)) {
       return undefined;
     }
-    let completedStep = false;
+    let advanced = false;
     const verifyDesiredState = () => {
       const desiredStateReached = verificationSatisfied(
         verification,
         findTarget(currentStep.target),
         location.pathname
       );
-      if (!completedStep && desiredStateReached) {
-        completedStep = true;
-        setStep((current) => current + 1);
+      if (!desiredStateReached) {
+        if (heldStep === step) setHeldStep(-1);
+        return;
+      }
+      if (!advanced && heldStep !== step) {
+        advanced = true;
+        advanceFrom(step);
       }
     };
 
@@ -315,43 +376,16 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       document.removeEventListener('input', verifyDesiredState, true);
       document.removeEventListener('change', verifyDesiredState, true);
     };
-  }, [active, currentStep, location.pathname, performedStep, step]);
+  }, [advanceFrom, currentStep, heldStep, location.pathname, step]);
 
   useEffect(() => {
-    if (!active || !currentStep?.complete.presentation || performedStep !== step) return;
-    const operation = currentStep.complete.operation;
-    const target = findTarget(currentStep.target);
-    if (verificationSatisfied(currentStep.complete.verify, target, location.pathname)) return;
-    if (operation.type === 'navigate') {
-      navigate(resolveConsolePath(operation.path));
-      return;
-    }
-    if (operation.type === 'fillTarget') {
-      if (target instanceof HTMLInputElement) {
-        const valueSetter = Object.getOwnPropertyDescriptor(
-          HTMLInputElement.prototype,
-          'value'
-        )?.set;
-        valueSetter?.call(target, operation.value);
-        target.dispatchEvent(new Event('input', { bubbles: true }));
-      }
-      return;
-    }
-    target?.click();
-  }, [active, currentStep, location.pathname, navigate, performedStep, step]);
-
-  useEffect(() => {
-    const presentation = currentStep?.complete.presentation;
-    if (
-      !active ||
-      !canPerformCurrentStep ||
-      !presentation ||
-      presentation.initiator !== 'timer'
-    ) {
+    // Deliberately not gated on the target being found: a demo that waits forever for an element
+    // the current page never renders is worse than one that performs the step and moves on.
+    if (activeModule?.mode !== 'timed' || !currentStep || heldStep === step) {
       setTimerRemainingSeconds(undefined);
       return undefined;
     }
-    const match = presentation.delay.match(/^(\d+)(ms|s)$/);
+    const match = activeModule.timerDelay.match(/^(\d+)(ms|s)$/);
     if (!match) return undefined;
     const duration = Number(match[1]) * (match[2] === 's' ? 1000 : 1);
     const deadline = Date.now() + duration;
@@ -365,23 +399,28 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       window.clearInterval(countdown);
       window.clearTimeout(timer);
     };
-  }, [active, canPerformCurrentStep, currentStep, performCurrentStep]);
+  }, [activeModule, currentStep, heldStep, performCurrentStep, step]);
 
   useEffect(() => {
-    if (!active || !activeModule || step === 0) return undefined;
+    if (!activeModule || !currentStep || step === 0) return undefined;
     const previousStep = activeModule.steps[step - 1];
     if (previousStep.complete.verify.type !== 'targetAttribute') return undefined;
 
     const previousCondition = previousStep.complete.verify;
     let rolledBack = false;
     const verifyPrerequisite = () => {
-      if (rolledBack || findTarget(currentStep?.target)) return;
-      const previousTarget = findTarget(previousStep.target);
+      if (rolledBack || findTarget(currentStep.target)) return;
+      const previousTarget = elementWithAttribute(
+        findTarget(previousStep.target),
+        previousCondition.attribute
+      );
       const prerequisiteStillMet =
         previousTarget?.getAttribute(previousCondition.attribute) === previousCondition.value;
       if (!prerequisiteStillMet) {
         rolledBack = true;
-        setStep((current) => (current === step ? current - 1 : current));
+        setLesson((current) =>
+          current && current.step === step ? { ...current, step: step - 1 } : current
+        );
       }
     };
 
@@ -394,63 +433,70 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     });
     verifyPrerequisite();
     return () => observer.disconnect();
-  }, [active, activeModule, currentStep, step]);
+  }, [activeModule, currentStep, step]);
+
+  // A lesson whose lab was deleted, renamed, or is missing a launch parameter cannot run.
+  useEffect(() => {
+    if (lesson && labsLoaded && !activeModule) stop();
+  }, [activeModule, labsLoaded, lesson, stop]);
 
   useEffect(() => {
+    if (!lesson) return;
     if (completed) {
-      stop();
+      sessionStorage.removeItem(SESSION_KEY);
       return;
     }
-    if (!active || !activeModule) return;
-    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ moduleId: activeModule.id, step }));
-  }, [active, activeModule, completed, step, stop]);
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify(lesson));
+  }, [completed, lesson]);
+
+  const returnUrl =
+    lesson?.returnUrl && isAllowedReturnUrl(lesson.returnUrl, settings.portalUrl)
+      ? lesson.returnUrl
+      : '';
 
   return useMemo(
     () => ({
-      active,
+      active: Boolean(lesson),
       activeModule,
       activeTab: parseTab(location.pathname, primaryResource),
-      canPerformCurrentStep,
-      clearHighlight,
       completed,
       currentStep,
       currentNamespace: parseNamespace(location.pathname),
-      highlight,
+      goBack,
       highlightId,
       highlightTarget,
       highlightTargetFound,
-      openPage,
-      performCurrentStep,
+      labsLoaded,
       path: location.pathname,
+      performCurrentStep,
       perspective,
       primaryResource,
       resourcePhase: resourceError
         ? 'unavailable'
-        : resourceLoaded
-          ? String(resource?.status?.phase ?? 'unknown')
-          : 'loading',
+        : !primaryResource
+          ? 'none'
+          : resourceLoaded
+            ? String(resource?.status?.phase ?? 'unknown')
+            : 'loading',
       reportHighlightTarget,
-      start,
-      startModule,
+      returnUrl,
+      settings,
+      startLab,
       step,
       stop,
-      timerRemainingSeconds,
-      openResourceTab
+      timerRemainingSeconds
     }),
     [
-      active,
       activeModule,
-      canPerformCurrentStep,
-      clearHighlight,
       completed,
       currentStep,
-      highlight,
+      goBack,
       highlightId,
       highlightTarget,
       highlightTargetFound,
+      labsLoaded,
+      lesson,
       location.pathname,
-      openPage,
-      openResourceTab,
       performCurrentStep,
       perspective,
       primaryResource,
@@ -458,8 +504,9 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       resource,
       resourceError,
       resourceLoaded,
-      start,
-      startModule,
+      returnUrl,
+      settings,
+      startLab,
       step,
       stop,
       timerRemainingSeconds
@@ -622,13 +669,46 @@ const positionBubble = (rect: TargetRect) => {
   };
 };
 
+const StepControls: FC<{ value: GuidanceValue }> = ({ value }) => (
+  <div className="academy-guidance__actions">
+    <button
+      type="button"
+      className="academy-guidance__secondary"
+      disabled={value.step === 0}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        value.goBack();
+      }}
+    >
+      Back
+    </button>
+    <button
+      type="button"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        value.performCurrentStep();
+      }}
+    >
+      Continue
+    </button>
+    {value.timerRemainingSeconds !== undefined ? (
+      <small>Continuing in {value.timerRemainingSeconds}s</small>
+    ) : null}
+  </div>
+);
+
 const GuidanceTarget: FC<{ value: GuidanceValue }> = ({ value }) => {
   const targetRect = useTargetRect({
     target: value.highlightTarget,
     onTargetState: value.reportHighlightTarget
   });
 
-  if (!targetRect) return null;
+  // The measured rect belongs to the previous step for one render after the step changes.
+  // Gating on highlightTargetFound keeps the bubble and the panel's fallback step block
+  // mutually exclusive, so a step never shows two Continue buttons.
+  if (!targetRect || !value.highlightTargetFound) return null;
   const bubble = positionBubble(targetRect);
 
   return (
@@ -642,7 +722,7 @@ const GuidanceTarget: FC<{ value: GuidanceValue }> = ({ value }) => {
           width: targetRect.width
         }}
       />
-      {value.active && !value.completed && value.currentStep ? (
+      {value.currentStep ? (
         <aside
           className={`academy-guidance__bubble academy-guidance__bubble--${bubble.placement}`}
           style={bubble.style}
@@ -650,39 +730,48 @@ const GuidanceTarget: FC<{ value: GuidanceValue }> = ({ value }) => {
         >
           <strong>{value.currentStep.title}</strong>
           <p>{value.currentStep.description}</p>
-          {value.currentStep.complete.presentation?.initiator === 'continue' ? (
-            <button
-              type="button"
-              disabled={!value.canPerformCurrentStep}
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation();
-                value.performCurrentStep();
-              }}
-            >
-              Continue
-            </button>
-          ) : null}
-          {value.currentStep.complete.presentation?.initiator === 'timer' &&
-          value.timerRemainingSeconds !== undefined ? (
-            <small>Continuing in {value.timerRemainingSeconds}s</small>
-          ) : null}
+          <StepControls value={value} />
         </aside>
       ) : null}
     </>
   );
 };
 
-const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) =>
-  value.active ? (
+const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) => {
+  if (!value.active) return null;
+  if (!value.activeModule) {
+    return (
+      <aside className="academy-guidance__controller" aria-live="polite">
+        <strong>Academy guidance</strong>
+        <p><small>Loading lab…</small></p>
+      </aside>
+    );
+  }
+
+  return (
     <aside className="academy-guidance__controller" aria-live="polite">
-      <strong>{value.activeModule?.title ?? 'Academy guidance'}</strong>
+      <strong>{value.activeModule.title}</strong>
       {value.completed ? (
-        <p>{value.activeModule?.completionText}</p>
+        <p>{value.activeModule.completionText}</p>
       ) : (
         <>
-          <p>Step {value.step + 1} of {value.activeModule?.steps.length}</p>
-          <p><small>{value.highlightTargetFound ? 'Target ready' : 'Waiting for the console element…'}</small></p>
+          <p>Step {value.step + 1} of {value.activeModule.steps.length}</p>
+          <p>
+            <small>
+              {value.highlightTargetFound
+                ? 'Target ready'
+                : 'Waiting for the console element — use Continue to move on.'}
+            </small>
+          </p>
+          {/* The anchored bubble is gone whenever its target cannot be measured, so the
+              persistent panel carries the same step and controls. */}
+          {value.highlightTargetFound ? null : (
+            <div className="academy-guidance__step">
+              <strong>{value.currentStep?.title}</strong>
+              <p>{value.currentStep?.description}</p>
+              <StepControls value={value} />
+            </div>
+          )}
         </>
       )}
       <dl>
@@ -691,9 +780,19 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) =>
         <dt>Tab</dt><dd>{value.activeTab || 'none'}</dd>
         <dt>{value.primaryResource?.label ?? 'Resource'}</dt><dd>{value.resourcePhase}</dd>
       </dl>
-      <button type="button" className="academy-guidance__secondary" onClick={value.stop}>Stop</button>
+      <div className="academy-guidance__actions">
+        <button type="button" className="academy-guidance__secondary" onClick={value.stop}>
+          {value.completed ? 'Finish' : 'Stop'}
+        </button>
+        {value.completed && value.returnUrl ? (
+          <a className="academy-guidance__return" href={value.returnUrl}>
+            Return to the Academy
+          </a>
+        ) : null}
+      </div>
     </aside>
-  ) : null;
+  );
+};
 
 export const GuidanceProvider: FC<PropsWithChildren<{ value: GuidanceValue }>> = ({
   children,

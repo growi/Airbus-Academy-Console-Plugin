@@ -1,221 +1,178 @@
 # Academy Guidance Console Plugin PoC
 
-This is a multi-target OpenShift dynamic console plugin that demonstrates guidance behavior
-which cannot be expressed by a native `ConsoleQuickStart`:
+This is a multi-target OpenShift dynamic console plugin that delivers guided labs which cannot be
+expressed by a native `ConsoleQuickStart`:
 
 - unconditional highlighting of console elements carrying `data-quickstart-id`;
-- an anchored guidance bubble for step instructions and presentation controls;
-- a stable workflow panel for progress, console state, and stopping the lesson;
-- opening console pages through the router;
-- switching route-backed resource tabs;
-- reading the current route, perspective, namespace, active tab, target availability,
-  and live module-defined resource phase.
-- running a persistent route-aware lesson that advances when the user opens Workloads,
-  the known database pod, Logs, and Terminal.
+- an anchored guidance bubble for step instructions, with Back and Continue on every step;
+- a stable workflow panel for progress, console state, and stopping the lab;
+- opening console pages through the router and switching route-backed resource tabs;
+- reading the current route, perspective, namespace, active tab, target availability, and the
+  live phase of a lab-defined resource;
+- running a persistent route-aware lab that advances as the user navigates the console.
 
-## Tour catalog
+Lab content is **not** part of the plugin image. Labs are `ConsoleLab` custom resources, authored
+in `labs/` and synced by ArgoCD, so publishing or editing a lab is a `git push`.
 
-The Academy guidance page renders every registered module from `trainingModuleCatalog`. Its
-responsive list shows the module title, short description, inferred guidance mode, step count, and
-an explicit Start action. Users can search titles and descriptions or filter by Assisted,
-Continue, and Timed mode. Adding a module to `src/modules/catalog.ts` automatically adds it to this
-page; no separate page configuration is required.
+## Lab catalog
 
-The current Academy workshop candidate assessment, recommended delivery order, and production
-prerequisites are tracked in `docs/academy-tour-candidates.md`.
+**Home → Academy labs** lists every `ConsoleLab` with `spec.visibility: default`. The list shows
+title, description, and step count, with **Start lab** (assisted) and **Watch demo** (timed)
+actions. Hidden labs never appear here — they are reachable only through a launch URL.
 
-## Training modules
+The bottom of the page links to the DCS Academy portal when `AcademySettings.spec.portalUrl` is
+configured (see [deploy/academysettings-example.yaml](deploy/academysettings-example.yaml)).
 
-Training content is separate from the engine under `src/modules/`. A module defines its title,
-purpose, completion text, and ordered steps. Each step provides:
+The Academy workshop candidate assessment, recommended delivery order, and production
+prerequisites are tracked in [docs/academy-tour-candidates.md](docs/academy-tour-candidates.md).
 
-- a short title;
-- explanatory guidance describing what to do, why it matters, and how to proceed;
-- a trusted highlight target: a Quick Start ID, exact console link, or target-adapter element;
-- a completion transaction containing an operation, optional presentation policy, and independent
-  verification condition.
+## Lab content: the ConsoleLab CRD
 
-`module.schema.json` documents the authoring contract and enables editor validation. Add a module
-JSON file and register it in `src/modules/catalog.ts`; arbitrary selectors are not accepted from
-URLs.
+`ConsoleLab` is cluster-scoped, operator-free catalog data — the same pattern as the Academy
+portal's `Track` CRD. The plugin watches it with the logged-in user's own credentials; the
+`academy-lab-reader` ClusterRole grants every authenticated user read access to lab content and
+plugin settings, and nothing else.
 
-The renderer deliberately separates transient step guidance from persistent workflow state. The
-spotlight and guidance bubble share one target measurement observer, while the workflow panel
-remains fixed during console navigation. If a target temporarily disappears, the bubble is hidden
-and the workflow panel reports that it is waiting for the console element.
+```bash
+oc get consolelabs
+oc apply -k labs/                  # publish content without touching the plugin
+```
 
-### Build a new module
+A lab defines its title, description, completion text, visibility, mode, and ordered steps:
 
-1. Copy `src/modules/academy-portal-container-access.json` to a new file in `src/modules/`.
-2. Give the module a unique lowercase `id` containing only letters, numbers, and hyphens.
-3. Write the module-level `title`, `description`, and `completionText`.
-4. Define `context.primaryResource` and its entry in `context.resources`. The engine uses its
-   Kubernetes identity for the live watch and its console paths for resource navigation controls.
-5. Define the ordered `steps`. Each description should tell the learner what to do, why the
+| Field | Meaning |
+| --- | --- |
+| `spec.visibility` | `default` (listed in the catalog for anyone) or `hidden` (launch URL only). |
+| `spec.mode` | `assisted` (the learner acts, the engine verifies) or `timed` (the engine performs each step). The launch URL and the catalog buttons can override it. |
+| `spec.timerDelay` | Countdown before a timed step performs itself, e.g. `5s` or `500ms`. |
+| `spec.context` | Optional. Declares the resource whose live phase the workflow panel shows. |
+| `spec.steps` | Ordered steps. Each has an `id`, `title`, `description`, `target`, and `complete`. |
+
+Each step provides a short title, guidance describing what to do and why it matters, a trusted
+highlight target, and a completion transaction of one operation plus one independent
+verification condition.
+
+### Template parameters
+
+Any `{{parameter}}` in the spec is substituted from the launch URL query string when the lab
+starts; `ns` is accepted as an alias for `namespace`. A lab that still has an unresolved
+parameter does not start — the launcher names what is missing, and the catalog disables its Start
+button until a project is selected.
+
+```text
+/academy/lessons/lab-container-access/start?ns=lab-user-17&podName=web-1
+```
+
+Parameter values are restricted to characters that can appear in a Kubernetes name or console
+path; anything else is dropped rather than substituted into a path.
+
+When no `ns` parameter is given, `{{namespace}}` falls back to the project the console is
+currently scoped to, which is what makes a default lab usable by any learner in their own
+project.
+
+### Default and hidden labs
+
+- **Default** labs teach the console itself and must work for any authenticated user: either use
+  no namespaced paths at all (`tour-console-basics`) or template `{{namespace}}`
+  (`tour-console-areas`).
+- **Hidden** labs run against resources somebody provisioned for the learner. The Academy portal
+  creates a namespace, fills it with the lab's fixtures, and links to the lab with the matching
+  parameters. `visibility: hidden` keeps them out of the catalog; the actual access boundary is
+  namespace RBAC — lab instructions are not secret, and a hidden lab is useless without access to
+  the namespace it points at.
+
+### Returning to the portal
+
+A launch URL may carry `returnUrl`. On completion the workflow panel offers **Return to the
+Academy**, but only when that URL's origin matches `AcademySettings.spec.portalUrl` — otherwise
+any page could hand the console a link that sends learners elsewhere.
+
+```text
+/academy/lessons/lab-container-access/start?ns=lab-user-17&podName=web-1&returnUrl=https://academy.apps.example.com/labs/console
+```
+
+### Write a new lab
+
+1. Copy a file in `labs/` and give it a new `metadata.name` — that name is the lab ID used in
+   launch URLs.
+2. Write `spec.title`, `spec.description`, `spec.completionText`, and pick `visibility`/`mode`.
+3. Use `{{namespace}}` (and any further parameters) instead of hardcoded namespaces.
+4. Define `spec.context` if the workflow panel should watch a resource.
+5. Define the ordered `spec.steps`. Each description should tell the learner what to do, why the
    action matters, and how to recognize or perform it.
-6. Import and register the module in `src/modules/catalog.ts`.
-7. Build every supported target with `bin/pluginctl build ocp-4.20` and
-   `bin/pluginctl build ocp-4.22`.
-8. Deploy the new image and test both the guidance page and external launch URL.
-
-Minimal module example:
-
-```json
-{
-  "$schema": "./module.schema.json",
-  "id": "inspect-example-pod",
-  "title": "Inspect an example pod",
-  "description": "Learn how to find and inspect a running pod.",
-  "completionText": "Lesson complete.",
-  "context": {
-    "primaryResource": "examplePod",
-    "resources": {
-      "examplePod": {
-        "apiVersion": "v1",
-        "kind": "Pod",
-        "label": "Example pod",
-        "listPath": "/k8s/ns/example/core~v1~Pod",
-        "name": "example-pod",
-        "namespace": "example",
-        "consolePath": "/k8s/ns/example/pods/example-pod",
-        "tabs": {
-          "logs": "/k8s/ns/example/pods/example-pod/logs",
-          "terminal": "/k8s/ns/example/pods/example-pod/terminal"
-        }
-      }
-    }
-  },
-  "steps": [
-    {
-      "id": "open-workloads",
-      "title": "Open Workloads",
-      "description": "Expand Workloads to access the resource pages used to inspect running applications.",
-      "target": {
-        "type": "quickStartId",
-        "value": "qs-nav-workloads"
-      },
-      "complete": {
-        "operation": { "type": "activateTarget" },
-        "verify": {
-          "type": "targetAttribute",
-          "attribute": "aria-expanded",
-          "value": "true"
-        }
-      }
-    },
-    {
-      "id": "open-pods",
-      "title": "Open Pods",
-      "description": "Open the Pods page to view the workload instances running in the selected project.",
-      "target": {
-        "type": "href",
-        "value": "/k8s/ns/example/core~v1~Pod"
-      },
-      "complete": {
-        "operation": {
-          "type": "navigate",
-          "path": "/k8s/ns/example/core~v1~Pod"
-        },
-        "presentation": { "initiator": "continue" },
-        "verify": {
-          "type": "route",
-          "path": "/k8s/ns/example/core~v1~Pod"
-        }
-      }
-    }
-  ]
-}
-```
-
-Register it in `src/modules/catalog.ts`:
-
-```ts
-import inspectExamplePod from './inspect-example-pod.json';
-
-const modules = [
-  academyPortalContainerAccess as TrainingModule,
-  inspectExamplePod as TrainingModule
-];
-```
+6. Add the file to `labs/kustomization.yaml` and apply it: `oc apply -k labs/`. No rebuild.
 
 Supported targets:
 
 - `quickStartId` highlights an element carrying the corresponding `data-quickstart-id`.
-- `href` highlights an anchor with the exact console-relative URL.
-- `consoleElement` resolves a named semantic console control through the selected OpenShift target
-  adapter. The current adapters provide `namespaceSelector`, `namespaceFilter`, and
-  `namespaceOption`; the latter takes the exact option text in `value`. `navigationLink` resolves a
-  sidebar link by its exact visible name regardless of the selected namespace, and
-  `resourceSearch` resolves the current resource list's name filter.
+- `href` highlights an anchor with a matching console-relative URL.
+- `consoleElement` resolves a named semantic console control through the selected OpenShift
+  target adapter: `namespaceSelector`, `namespaceFilter`, `namespaceOption` (exact option text in
+  `value`), `navigationLink` (exact sidebar link name), and `resourceSearch`.
 
 Supported operations:
 
 - `activateTarget` activates the highlighted console control.
 - `navigate` opens the configured console-relative path through the target router adapter.
-- `fillTarget` enters its configured `value` into the highlighted input using the browser's native
-  input contract.
-
-If `presentation` is omitted, the learner performs the operation and the engine only verifies it.
-`initiator: continue` shows a Continue button and `initiator: timer` performs the operation after a
-validated duration such as `500ms` or `5s`, with a visible countdown. Every workflow stops and
-clears its persisted session automatically when its final verification succeeds.
+- `fillTarget` enters its configured `value` into the highlighted input using the browser's
+  native input contract.
 
 Supported verification conditions:
 
-- `targetAttribute` advances only when the highlighted target has the configured attribute value.
-  Use this for controls such as expandable navigation sections, where a click alone does not prove
-  that the required state was reached.
-- `route` advances when the browser reaches the configured exact path.
+- `targetAttribute` advances only when the target has the configured attribute value. Use this
+  for controls such as expandable navigation sections, where a click alone does not prove that
+  the required state was reached.
+- `route` advances when the browser reaches a URL equivalent to the configured path.
 - `targetValue` advances when the highlighted input contains the configured exact value.
 - `namespace` advances when the current console route is scoped to the configured namespace.
 
-The three Academy portal examples demonstrate the supported policies:
+Do not put CSS selectors or executable behavior in a launch URL. The launcher accepts only a lab
+name plus template parameters and resolves all behavior from the cluster's lab content.
 
-- `academy-portal-container-access` is assisted.
-- `academy-portal-container-access-manual` performs each operation after Continue.
-- `academy-portal-container-access-timed` performs each operation after five seconds.
+## Assisted labs and the Continue failsafe
 
-The namespace-selector examples add semantic console controls and non-click input operations:
+Verification is continuous in every mode: the engine watches routes, DOM attributes, and input
+values, and advances as soon as the desired state is reached. Because that detection is coupled
+to console markup, every step also has explicit controls:
 
-- `academy-portal-namespace-filter` is assisted.
-- `academy-portal-namespace-filter-manual` performs each operation after Continue.
-- `academy-portal-namespace-filter-timed` performs each operation after five seconds.
+- **Continue** performs the step's operation if the console is not already in the desired state,
+  then advances **regardless** of whether verification fired. A detector broken by a console
+  update costs one click instead of the whole lab.
+- **Back** returns to the previous step and holds it there — auto-advance stays off for that step
+  until the learner leaves its desired state, so Back cannot immediately bounce forward.
 
-Presentation variants can share the assisted module definition. Use
-`createPresentationVariant` from `src/modules/variants.ts` to add a Continue or timed presentation
-policy to every step while keeping targets, operations, verification, and guidance text together.
+Both controls sit in the anchored bubble. When a target cannot be measured (the element is
+missing, hidden, or scrolled out of a collapsed menu), the persistent workflow panel shows the
+same step text and the same controls, so a lab is never stuck behind an element the engine cannot
+find.
 
-Do not put CSS selectors or executable behavior in external links. The launcher accepts only a
-registered module ID and resolves all behavior from the trusted module catalog.
+URL equivalence is shared across targets in `src/guidance/paths.ts`: a list page declared as
+`apps~v1~Deployment` also matches the console's legacy `deployments` URL and the same list in
+another scope. Assert a specific project with a `namespace` verification, not with a path.
 
-## External lesson links
+## External lab links
 
-Any trusted application can start a registered module by linking to:
+Any trusted application can start a lab by linking to:
 
 ```text
-https://<console-host>/academy/lessons/<module-id>/start
+https://<console-host>/academy/lessons/<lab-name>/start[?ns=<namespace>&<param>=<value>&mode=timed&returnUrl=<portal-url>]
 ```
 
-For this PoC:
+After console authentication, the launcher resolves the lab, substitutes the parameters, starts
+it, and stores progress in `sessionStorage`. The persistent guidance controller stays active as
+the user leaves the launcher and navigates the console. Progress is isolated to the browser tab.
 
-```text
-https://<console-host>/academy/lessons/academy-portal-container-access/start
-```
-
-After console authentication, the launcher resolves the module ID, starts the lesson, and stores
-progress in `sessionStorage`. The persistent guidance controller remains active as the user leaves
-the launcher and navigates through the console. Progress is isolated to the current browser tab.
-
-The implementation does not fork or patch the OpenShift console. A
-`console.context-provider` keeps the guidance engine and floating controller mounted while
-the user navigates. The plugin is independently built, served, registered through a
-`ConsolePlugin`, and enabled in `Console.operator.openshift.io/cluster`.
+The implementation does not fork or patch the OpenShift console. A `console.context-provider`
+keeps the guidance engine and floating controller mounted while the user navigates. The plugin is
+independently built, served, registered through a `ConsolePlugin`, and enabled in
+`Console.operator.openshift.io/cluster`.
 
 ## Target structure
 
-The lesson engine, module catalog, and UI are shared under `src/`. Version-specific dependency
-manifests plus route, navigation, and semantic-element adapters live under `targets/<target>/`. Deployment overlays under
-`deploy/overlays/<target>/` select an explicitly versioned image tag for the same target.
+The lab engine, content loader, and UI are shared under `src/`. Version-specific dependency
+manifests plus route, navigation, and semantic-element adapters live under `targets/<target>/`.
+Deployment overlays under `deploy/overlays/<target>/` select an explicitly versioned image tag
+for the same target.
 
 | Target | OpenShift versions | React/router generation | Image tag |
 | --- | --- | --- | --- |
@@ -234,16 +191,17 @@ bin/pluginctl list
 
 ## Compatibility boundary
 
-Navigation and Kubernetes state use supported console SDK APIs. Unconditional highlighting
-uses console DOM attributes because the SDK does not expose a programmatic spotlight API.
-Version-specific selectors are isolated in `targets/<target>/elements.ts`, while the shared
-measurement and workflow behavior remains in `GuidanceContext.tsx`. These adapters must be
-regression-tested for every OpenShift minor release. They do not modify core console code, but are
-coupled to rendered console markup.
+Navigation and Kubernetes state use supported console SDK APIs. Unconditional highlighting uses
+console DOM attributes because the SDK does not expose a programmatic spotlight API.
+Version-specific selectors are isolated in `targets/<target>/elements.ts`, where each control
+lists several candidate selectors so a renamed class degrades to the next candidate. The shared
+measurement and workflow behavior stays in `GuidanceContext.tsx`. These adapters must be
+regression-tested for every OpenShift minor release. They do not modify core console code, but
+are coupled to rendered console markup — which is exactly why Continue exists.
 
 Each target pins the matching `@openshift-console/dynamic-plugin-sdk` generation and declares a
 bounded console plugin API range. Add a new target only when a console release requires different
-dependencies or adapter behavior; keep lesson functionality in shared source.
+dependencies or adapter behavior; keep lab functionality in shared source.
 
 ## Build and deploy
 
@@ -258,34 +216,42 @@ bin/pluginctl build ocp-4.22
 Build explicitly tagged local container images with Podman:
 
 ```bash
-bin/pluginctl container-build ocp-4.20
 bin/pluginctl container-build ocp-4.22
 ```
 
 Inspect the generated cluster resources without applying them:
 
 ```bash
-bin/pluginctl render ocp-4.20
 bin/pluginctl render ocp-4.22
 ```
 
 Deploy the one target matching the cluster version:
 
 ```bash
-bin/pluginctl deploy ocp-4.20
-# or
 bin/pluginctl deploy ocp-4.22
 ```
 
-The deploy command applies the target overlay, assembles its isolated binary build context, starts
-the OpenShift build, and waits for the deployment rollout. The deployment has an ImageStream
-trigger, so the explicitly tagged successful build automatically rolls out.
+The deploy command applies the target overlay (including the CRDs and reader RBAC), assembles its
+isolated binary build context, starts the OpenShift build, and waits for the deployment rollout.
+The deployment has an ImageStream trigger, so the explicitly tagged successful build
+automatically rolls out.
+
+Publish lab content and the portal link:
+
+```bash
+oc apply -k labs/
+oc apply -f deploy/academysettings-example.yaml   # after setting your portal URL
+```
+
+For continuous content delivery, apply the ArgoCD application instead of `oc apply -k labs/`:
+
+```bash
+oc apply -f deploy/argocd/academy-console-labs.yaml
+```
 
 Enable the plugin without replacing any existing plugins:
 
 ```bash
-current=$(oc get console.operator.openshift.io cluster \
-  -o jsonpath='{.spec.plugins}' | tr -d '[],' || true)
 if ! oc get console.operator.openshift.io cluster \
   -o jsonpath='{.spec.plugins}' | grep -q 'academy-guidance'; then
   oc patch console.operator.openshift.io cluster --type=json \
@@ -300,15 +266,21 @@ oc patch console.operator.openshift.io cluster --type=merge \
   -p='{"spec":{"plugins":["academy-guidance"]}}'
 ```
 
-After the console rollout completes, refresh the browser and open
-**Home → Academy guidance**.
+After the console rollout completes, refresh the browser and open **Home → Academy labs**.
 
-## End-to-end tests
+## Tests
 
-`tests/e2e/` is an isolated Playwright project that exercises the complete lesson against a live
-OpenShift console. It verifies desired-state rollback for the Workloads menu, navigation through
-Pods, pod details, Logs, and Terminal, lesson completion and stopping, and guards against excessive
-DOM mutation or long browser tasks.
+Console URL equivalence is pure logic and has a dependency-free unit test (Node strips the types
+itself):
+
+```bash
+node --test 'tests/unit/*.test.ts'
+```
+
+`tests/e2e/` is an isolated Playwright project that exercises complete labs against a live
+OpenShift console: catalog rendering, the Continue failsafe, Back, assisted navigation through
+resource pages, a timed run, hidden-lab launch parameters, completion, and guards against
+excessive DOM mutation or long browser tasks.
 
 Install the test dependencies and managed Firefox once:
 
@@ -318,19 +290,21 @@ npm ci
 npx playwright install firefox
 ```
 
-Run the suite with a test account that can read the Academy pod and open its terminal:
+The suite needs the lab content applied (`oc apply -k labs/`) and a test account that can read
+the target namespace:
 
 ```bash
 CONSOLE_URL='https://console-openshift-console.apps.example.com' \
 CONSOLE_USERNAME='kubeadmin' \
 CONSOLE_PASSWORD='<password>' \
+ACADEMY_NAMESPACE='dcs-academy-portal' \
 npm test
 ```
 
-`CONSOLE_USERNAME` defaults to `kubeadmin`. Use `npm run test:headed` for an interactive browser.
-The suite accepts the cluster's development certificate, but Firefox may still report expected
-CRC WebSocket connection errors; unexpected console errors and all uncaught page errors fail the
-test.
+`CONSOLE_USERNAME` defaults to `kubeadmin` and `ACADEMY_NAMESPACE` to `dcs-academy-portal`. Use
+`npm run test:headed` for an interactive browser. The suite accepts the cluster's development
+certificate, but Firefox may still report expected CRC WebSocket connection errors; unexpected
+console errors and all uncaught page errors fail the test.
 
 ## Remove
 
@@ -339,10 +313,10 @@ Disable the plugin before deleting its backend:
 ```bash
 oc patch console.operator.openshift.io cluster --type=json \
   -p='[{"op":"remove","path":"/spec/plugins/0"}]'
-oc delete -k deploy/overlays/ocp-4.20
-# or
+oc delete -k labs/
 oc delete -k deploy/overlays/ocp-4.22
 ```
 
-The removal command assumes the PoC is the first enabled plugin. For a shared cluster,
-remove the array element matching `academy-guidance` instead of using a fixed index.
+The removal command assumes the PoC is the first enabled plugin. For a shared cluster, remove the
+array element matching `academy-guidance` instead of using a fixed index. Deleting the overlay
+also removes the `ConsoleLab` CRD and every lab object with it.

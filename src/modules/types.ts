@@ -1,3 +1,5 @@
+import type { K8sResourceCommon } from '@openshift-console/dynamic-plugin-sdk';
+
 export type TrainingTarget =
   | { type: 'quickStartId'; value: string }
   | { type: 'href'; value: string }
@@ -8,10 +10,6 @@ export type CompletionOperation =
   | { type: 'fillTarget'; value: string }
   | { type: 'navigate'; path: string };
 
-export type CompletionPresentation =
-  | { initiator: 'continue' }
-  | { initiator: 'timer'; delay: string };
-
 export type CompletionVerification =
   | { type: 'targetAttribute'; attribute: string; value: string }
   | { type: 'targetValue'; value: string }
@@ -20,7 +18,6 @@ export type CompletionVerification =
 
 export type StepCompletion = {
   operation: CompletionOperation;
-  presentation?: CompletionPresentation;
   verify: CompletionVerification;
 };
 
@@ -48,18 +45,41 @@ export type TrainingContext = {
   resources: Record<string, TrainingResource>;
 };
 
+/** default labs are listed in the catalog; hidden labs are launch-URL only. */
+export type LabVisibility = 'default' | 'hidden';
+
+/** assisted: the learner acts. timed: the engine performs each step itself. */
+export type TrainingMode = 'assisted' | 'timed';
+
+export type ConsoleLabSpec = {
+  title: string;
+  description: string;
+  completionText?: string;
+  visibility?: LabVisibility;
+  mode?: TrainingMode;
+  timerDelay?: string;
+  context?: TrainingContext;
+  steps: TrainingStep[];
+};
+
+export type ConsoleLabResource = K8sResourceCommon & { spec?: ConsoleLabSpec };
+
+/** A lab with every `{{parameter}}` resolved, ready for the engine to run. */
 export type TrainingModule = {
   id: string;
   title: string;
   description: string;
   completionText: string;
-  context: TrainingContext;
+  visibility: LabVisibility;
+  mode: TrainingMode;
+  timerDelay: string;
+  context?: TrainingContext;
   steps: TrainingStep[];
 };
 
-export type TrainingMode = 'assisted' | 'continue' | 'timed';
+export type LabParameters = Record<string, string>;
 
-export type TrainingModuleCatalogEntry = {
-  mode: TrainingMode;
-  module: TrainingModule;
+export type AcademySettings = {
+  portalUrl: string;
+  portalLinkText: string;
 };

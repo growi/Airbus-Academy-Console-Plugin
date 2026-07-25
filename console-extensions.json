@@ -18,7 +18,7 @@
     "type": "console.page/route",
     "properties": {
       "exact": true,
-      "path": "/academy/lessons/:moduleId/start",
+      "path": "/academy/lessons/:labId/start",
       "component": { "$codeRef": "LessonLauncherPage" }
     }
   },
@@ -26,7 +26,7 @@
     "type": "console.navigation/href",
     "properties": {
       "id": "academy-guidance",
-      "name": "Academy guidance",
+      "name": "Academy labs",
       "href": "/academy/guidance",
       "perspective": "admin",
       "section": "home"
