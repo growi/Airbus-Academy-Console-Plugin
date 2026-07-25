@@ -1,0 +1,11 @@
+# Lab content, applied independently of the plugin image:
+#   oc apply -k labs/
+# ArgoCD syncs this directory (see deploy/argocd/academy-console-labs.yaml), so publishing or
+# editing a lab is a git push — the plugin image is never rebuilt for content.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - tour-console-basics.yaml
+  - tour-console-areas.yaml
+  - lab-container-access.yaml
+  - lab-namespace-scope.yaml

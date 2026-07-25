@@ -1,0 +1,119 @@
+# Hidden lab: compares the same resource name in two namespaces, so the portal must provision
+# both and launch with:
+#   /academy/lessons/lab-namespace-scope/start?ns=<first>&secondNamespace=<second>
+# Templated scalars are quoted — an unquoted {{ starts a YAML flow mapping.
+apiVersion: academy.dcs/v1alpha1
+kind: ConsoleLab
+metadata:
+  name: lab-namespace-scope
+spec:
+  title: See the namespace boundary
+  description: Compare the same-named ConfigMap in two projects to see what a namespace isolates.
+  completionText: Lesson complete — one resource name, two independent objects.
+  visibility: hidden
+  mode: assisted
+  context:
+    primaryResource: firstConfigMap
+    resources:
+      firstConfigMap:
+        apiVersion: v1
+        kind: ConfigMap
+        label: First project ConfigMap
+        name: kube-root-ca.crt
+        namespace: '{{namespace}}'
+        listPath: '/k8s/ns/{{namespace}}/core~v1~ConfigMap'
+        consolePath: '/k8s/ns/{{namespace}}/configmaps/kube-root-ca.crt'
+      secondConfigMap:
+        apiVersion: v1
+        kind: ConfigMap
+        label: Second project ConfigMap
+        name: kube-root-ca.crt
+        namespace: '{{secondNamespace}}'
+        listPath: '/k8s/ns/{{secondNamespace}}/core~v1~ConfigMap'
+        consolePath: '/k8s/ns/{{secondNamespace}}/configmaps/kube-root-ca.crt'
+  steps:
+    - id: open-workloads
+      title: Open Workloads
+      description: OpenShift groups ConfigMaps under Workloads in the Administrator navigation.
+      target: { type: quickStartId, value: qs-nav-workloads }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: targetAttribute, attribute: aria-expanded, value: 'true' }
+    - id: open-configmaps
+      title: Open ConfigMaps across projects
+      description: >-
+        Start from the cluster-wide list. You will then set an explicit project scope and
+        watch the same list change meaning.
+      target: { type: consoleElement, id: navigationLink, value: ConfigMaps }
+      complete:
+        operation: { type: navigate, path: /k8s/all-namespaces/core~v1~ConfigMap }
+        verify: { type: route, path: /k8s/all-namespaces/core~v1~ConfigMap }
+    - id: open-first-selector
+      title: Open the project selector
+      description: The selected project is the Kubernetes namespace every view is scoped to.
+      target: { type: consoleElement, id: namespaceSelector }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: targetAttribute, attribute: aria-expanded, value: 'true' }
+    - id: filter-first-namespace
+      title: Filter the project list
+      description: Type the first project name to narrow the list without changing scope yet.
+      target: { type: consoleElement, id: namespaceFilter }
+      complete:
+        operation: { type: fillTarget, value: '{{namespace}}' }
+        verify: { type: targetValue, value: '{{namespace}}' }
+    - id: select-first-namespace
+      title: Select the first project
+      description: Selecting a project scopes every resource list and action to {{namespace}}.
+      target: { type: consoleElement, id: namespaceOption, value: '{{namespace}}' }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: namespace, value: '{{namespace}}' }
+    - id: open-first-configmap
+      title: Open kube-root-ca.crt in the first project
+      description: >-
+        This object belongs to {{namespace}}. Its name does not collide with copies in other
+        projects, because namespace is part of a resource's identity.
+      target: { type: href, value: '/k8s/ns/{{namespace}}/configmaps/kube-root-ca.crt' }
+      complete:
+        operation: { type: navigate, path: '/k8s/ns/{{namespace}}/configmaps/kube-root-ca.crt' }
+        verify: { type: route, path: '/k8s/ns/{{namespace}}/configmaps/kube-root-ca.crt' }
+    - id: open-second-selector
+      title: Open the project selector again
+      description: Change only the project scope — the resource kind and name stay the same.
+      target: { type: consoleElement, id: namespaceSelector }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: targetAttribute, attribute: aria-expanded, value: 'true' }
+    - id: filter-second-namespace
+      title: Filter for the second project
+      description: Type the second project name to find another independent namespace.
+      target: { type: consoleElement, id: namespaceFilter }
+      complete:
+        operation: { type: fillTarget, value: '{{secondNamespace}}' }
+        verify: { type: targetValue, value: '{{secondNamespace}}' }
+    - id: select-second-namespace
+      title: Select the second project
+      description: >-
+        The console now addresses a different namespace, with its own objects, quotas, and
+        access rules.
+      target: { type: consoleElement, id: namespaceOption, value: '{{secondNamespace}}' }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: namespace, value: '{{secondNamespace}}' }
+    - id: filter-second-configmaps
+      title: Filter for kube-root-ca.crt
+      description: Filter this project's list to find its own object carrying the same name.
+      target: { type: consoleElement, id: resourceSearch }
+      complete:
+        operation: { type: fillTarget, value: kube-root }
+        verify: { type: targetValue, value: kube-root }
+    - id: open-second-configmap
+      title: Open kube-root-ca.crt in the second project
+      description: >-
+        Same name, different object. Deleting or editing this one has no effect on the copy
+        in {{namespace}} — that is what a namespace boundary means.
+      target: { type: href, value: '/k8s/ns/{{secondNamespace}}/configmaps/kube-root-ca.crt' }
+      complete:
+        operation: { type: navigate, path: '/k8s/ns/{{secondNamespace}}/configmaps/kube-root-ca.crt' }
+        verify: { type: route, path: '/k8s/ns/{{secondNamespace}}/configmaps/kube-root-ca.crt' }

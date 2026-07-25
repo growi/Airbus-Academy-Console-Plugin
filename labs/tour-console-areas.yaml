@@ -1,0 +1,85 @@
+# Default lab: opens real resource lists in the project the console is currently scoped to.
+# {{namespace}} resolves from the launch URL's ns parameter, otherwise from the active project.
+# Templated scalars are quoted — an unquoted {{ starts a YAML flow mapping.
+apiVersion: academy.dcs/v1alpha1
+kind: ConsoleLab
+metadata:
+  name: tour-console-areas
+spec:
+  title: Tour the console resource areas
+  description: Open Deployments, Services, PersistentVolumeClaims, and ConfigMaps in your project.
+  completionText: Tour complete — you located the main resource areas of your project.
+  visibility: default
+  mode: assisted
+  context:
+    primaryResource: projectConfigMap
+    resources:
+      projectConfigMap:
+        apiVersion: v1
+        kind: ConfigMap
+        label: Project trust bundle
+        name: kube-root-ca.crt
+        namespace: '{{namespace}}'
+        listPath: '/k8s/ns/{{namespace}}/core~v1~ConfigMap'
+        consolePath: '/k8s/ns/{{namespace}}/configmaps/kube-root-ca.crt'
+  steps:
+    - id: open-workloads
+      title: Open Workloads
+      description: >-
+        Workloads contains the controllers and Pods that correspond to oc get deployment,pods.
+      target: { type: quickStartId, value: qs-nav-workloads }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: targetAttribute, attribute: aria-expanded, value: 'true' }
+    - id: open-deployments
+      title: Open Deployments
+      description: >-
+        Deployments show desired replicas, availability, rollout status, and links to
+        the Pods they own.
+      target: { type: consoleElement, id: navigationLink, value: Deployments }
+      complete:
+        operation: { type: navigate, path: '/k8s/ns/{{namespace}}/apps~v1~Deployment' }
+        verify: { type: route, path: '/k8s/ns/{{namespace}}/apps~v1~Deployment' }
+    - id: open-networking
+      title: Open Networking
+      description: Networking groups stable in-cluster Services and externally reachable Routes.
+      target: { type: quickStartId, value: qs-nav-networking }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: targetAttribute, attribute: aria-expanded, value: 'true' }
+    - id: open-services
+      title: Open Services
+      description: >-
+        Services correspond to oc get service and provide one stable address in front of
+        a changing set of Pods.
+      target: { type: consoleElement, id: navigationLink, value: Services }
+      complete:
+        operation: { type: navigate, path: '/k8s/ns/{{namespace}}/core~v1~Service' }
+        verify: { type: route, path: '/k8s/ns/{{namespace}}/core~v1~Service' }
+    - id: open-storage
+      title: Open Storage
+      description: >-
+        Storage contains PersistentVolumeClaims with their capacity, access mode, storage
+        class, and bound state.
+      target: { type: quickStartId, value: qs-nav-storage }
+      complete:
+        operation: { type: activateTarget }
+        verify: { type: targetAttribute, attribute: aria-expanded, value: 'true' }
+    - id: open-pvcs
+      title: Open PersistentVolumeClaims
+      description: >-
+        This view is the visual equivalent of oc get pvc and exposes storage class and
+        bound status at a glance.
+      target: { type: consoleElement, id: navigationLink, value: PersistentVolumeClaims }
+      complete:
+        operation: { type: navigate, path: '/k8s/ns/{{namespace}}/core~v1~PersistentVolumeClaim' }
+        verify: { type: route, path: '/k8s/ns/{{namespace}}/core~v1~PersistentVolumeClaim' }
+    - id: open-configmaps
+      title: Open ConfigMaps
+      description: >-
+        ConfigMaps expose non-secret application configuration, corresponding to
+        oc get configmap.
+      target: { type: consoleElement, id: navigationLink, value: ConfigMaps }
+      complete:
+        operation: { type: navigate, path: '/k8s/ns/{{namespace}}/core~v1~ConfigMap' }
+        verify: { type: route, path: '/k8s/ns/{{namespace}}/core~v1~ConfigMap' }
