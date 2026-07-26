@@ -24,11 +24,7 @@ const RESOURCE_PATH =
 
 const stripTrailingSlash = (path: string) => (path.length > 1 ? path.replace(/\/+$/, '') : path);
 
-/**
- * Every URL form that addresses the same console page. List pages also yield a scope-agnostic
- * `list:<plural>` token, so a step that declares one scope still completes when the console
- * shows that list in another one — assert the scope with a `namespace` verification instead.
- */
+/** Every URL form that addresses the same console page. */
 export const pathVariants = (path: string): string[] => {
   const normalized = stripTrailingSlash(path);
   const variants = new Set([normalized]);
@@ -36,13 +32,35 @@ export const pathVariants = (path: string): string[] => {
   if (!match) return Array.from(variants);
 
   const [, scope, , , kind, plural, rest = ''] = match;
-  const resource = plural ?? pluralize(kind);
-  variants.add(`/k8s/${scope}/${resource}${rest}`);
-  if (!rest) variants.add(`list:${resource}`);
+  variants.add(`/k8s/${scope}/${plural ?? pluralize(kind)}${rest}`);
   return Array.from(variants);
+};
+
+type ResourceList = { scope: string; resource: string };
+
+/** A resource LIST page (no trailing name/tab), or null for anything else. */
+const asList = (path: string): ResourceList | null => {
+  const match = stripTrailingSlash(path).match(RESOURCE_PATH);
+  if (!match) return null;
+  const [, scope, , , kind, plural, rest = ''] = match;
+  return rest ? null : { resource: plural ?? pluralize(kind), scope };
 };
 
 export const pathsMatch = (actual: string, expected: string) => {
   const expectedVariants = new Set(pathVariants(expected));
-  return pathVariants(actual).some((variant) => expectedVariants.has(variant));
+  if (pathVariants(actual).some((variant) => expectedVariants.has(variant))) return true;
+
+  // The same list is reachable in a narrower or wider scope: the sidebar link lands on
+  // all-namespaces when no project is selected, and a lab may declare either form. But a
+  // list in a DIFFERENT namespace is a different page — treating those as equal let a
+  // portal-launched lab advance through the steps in whatever project the console
+  // happened to be scoped to, which is exactly the failure this guards against.
+  const actualList = asList(actual);
+  const expectedList = asList(expected);
+  return Boolean(
+    actualList &&
+      expectedList &&
+      actualList.resource === expectedList.resource &&
+      [actualList.scope, expectedList.scope].some((scope) => !scope.startsWith('ns/'))
+  );
 };

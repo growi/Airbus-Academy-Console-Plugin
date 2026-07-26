@@ -1,0 +1,12 @@
+apiVersion: v2
+name: academy-console-plugin
+description: >-
+  DCS Academy guided-lab engine for the OpenShift web console: the dynamic console plugin,
+  its ConsoleLab/AcademySettings CRDs, and the reader RBAC that lets learners load lab content.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - openshift
+  - console-plugin
+  - academy

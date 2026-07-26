@@ -2,7 +2,15 @@
 // checking. No React and no SDK imports, so tests/unit can run it directly.
 import type { ConsoleLabResource, LabParameters, TrainingModule } from './types';
 
-const PARAMETER_PATTERN = /\{\{\s*([a-zA-Z][a-zA-Z0-9]*)\s*\}\}/g;
+/**
+ * Launch parameters are written `<<name>>`, not `{{name}}`.
+ *
+ * Lab content ships through the workshops Helm chart, which renders every file with `tpl`
+ * so a lab can reference chart values. Helm owns `{{ }}` and Educates owns `$( )`; a third
+ * placeholder substituted at LAUNCH time — long after both have run — needs a delimiter
+ * neither of them claims, or deploying the lab fails while parsing it as a Helm template.
+ */
+const PARAMETER_PATTERN = /<<\s*([a-zA-Z][a-zA-Z0-9]*)\s*>>/g;
 
 /**
  * Launch parameters arrive in a URL, so they are untrusted. Only characters that can appear in a

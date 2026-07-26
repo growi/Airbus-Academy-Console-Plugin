@@ -1,3 +1,4 @@
+{{- if .Values.rbac.create }}
 # Lab content and plugin settings are read by the console plugin in the browser, under the
 # logged-in user's own identity. Every authenticated user may read them; nothing here grants
 # access to the resources a lab navigates to — that stays governed by namespace RBAC.
@@ -5,6 +6,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: academy-lab-reader
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
 rules:
   - apiGroups: [academy.dcs]
     resources: [consolelabs, academysettings]
@@ -14,6 +17,8 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
   name: academy-lab-reader
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -22,3 +27,4 @@ subjects:
   - apiGroup: rbac.authorization.k8s.io
     kind: Group
     name: system:authenticated
+{{- end }}

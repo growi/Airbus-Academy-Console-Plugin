@@ -1,11 +1,20 @@
+{{- if .Values.crds.install }}
 # ConsoleLab — pure content data the console plugin reads to render a guided lab.
 # Operator-free (no controller), cluster-scoped, same pattern as the portal's Track CRD.
-# Lab content is authored in git under labs/ and synced by ArgoCD, so iterating on a lab
-# never rebuilds the plugin image.
+# Lab content is authored in the workshops monorepo and synced by its own ArgoCD application,
+# so iterating on a lab never rebuilds the plugin image.
+#
+# Kept on uninstall: deleting this chart must not delete the lab objects another repository
+# published into the cluster.
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: consolelabs.academy.dcs
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false
 spec:
   group: academy.dcs
   scope: Cluster
@@ -124,6 +133,11 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   name: academysettings.academy.dcs
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+    argocd.argoproj.io/sync-options: Prune=false
 spec:
   group: academy.dcs
   scope: Cluster
@@ -156,3 +170,4 @@ spec:
         - name: Portal
           type: string
           jsonPath: .spec.portalUrl
+{{- end }}

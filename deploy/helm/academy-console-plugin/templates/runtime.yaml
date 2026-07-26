@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "academy.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: {{ include "academy.name" . }}-serving-cert
+spec:
+  selector:
+    {{- include "academy.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: https
+      port: 9443
+      targetPort: 9443
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "academy.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  {{- if .Values.build.enabled }}
+  annotations:
+    image.openshift.io/triggers: >-
+      [{"from":{"kind":"ImageStreamTag","name":"{{ include "academy.name" . }}:{{ .Values.image.tag }}","namespace":"{{ .Release.Namespace }}"},"fieldPath":"spec.template.spec.containers[?(@.name==\"plugin\")].image"}]
+  {{- end }}
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      {{- include "academy.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "academy.selectorLabels" . | nindent 8 }}
+      annotations:
+        # Roll the pods when nginx.conf changes; nginx reads it only at startup.
+        checksum/nginx-config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: plugin
+          image: {{ include "academy.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: https
+              containerPort: 9443
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/cert
+              readOnly: true
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+              readOnly: true
+      volumes:
+        - name: serving-cert
+          secret:
+            secretName: {{ include "academy.name" . }}-serving-cert
+        - name: nginx-config
+          configMap:
+            name: {{ include "academy.name" . }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: {{ include "academy.name" . }}
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+spec:
+  displayName: Academy Guidance
+  backend:
+    type: Service
+    service:
+      name: {{ include "academy.name" . }}
+      namespace: {{ .Release.Namespace }}
+      port: 9443
+      basePath: /

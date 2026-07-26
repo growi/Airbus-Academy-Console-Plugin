@@ -255,7 +255,7 @@ test('a hidden lab needs its launch parameters and is not listed', async ({ page
 
   // No project selected and no ns parameter: the launcher must refuse and say what is missing.
   await page.goto('/k8s/all-namespaces/core~v1~ConfigMap');
-  await page.goto('/academy/lessons/lab-container-access/start');
+  await page.goto('/academy/lessons/lab-u01-container-access/start');
   await expect(page.getByText(/needs launch parameters/)).toContainText('podName');
   await expect(page.locator('.academy-guidance__controller')).toHaveCount(0);
 
@@ -263,7 +263,7 @@ test('a hidden lab needs its launch parameters and is not listed', async ({ page
   await expect(page.getByText(/was not found on this cluster/)).toBeVisible();
 
   await page.goto(
-    `/academy/lessons/lab-container-access/start?ns=${NAMESPACE}&podName=${POD}`
+    `/academy/lessons/lab-u01-container-access/start?ns=${NAMESPACE}&podName=${POD}`
   );
   await expect(page.getByText('Lab started')).toBeVisible();
   const bubble = page.locator('.academy-guidance__bubble');
@@ -274,15 +274,15 @@ test('a hidden lab needs its launch parameters and is not listed', async ({ page
     'Open Workloads',
     'Open Pods',
     'Open the lab pod',
-    'Inspect the logs',
-    'Open the container terminal'
+    'Read the logs',
+    'Open a shell in the container'
   ]) {
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
     await continueButton.click();
   }
   await expect(page).toHaveURL(new RegExp(`/pods/${POD}/terminal$`));
   await expect(page.locator('.academy-guidance__controller'))
-    .toContainText('the pod terminal is open');
+    .toContainText('opened a shell inside its container');
 });
 
 test('offers a return link only for the configured portal origin', async ({ page }) => {
@@ -304,19 +304,25 @@ test('offers a return link only for the configured portal origin', async ({ page
   const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
   for (let step = 0; step < 5; step += 1) await continueButton.click();
   const panel = page.locator('.academy-guidance__controller');
-  await expect(panel.getByRole('link', { name: 'Return to the Academy' })).toHaveAttribute(
-    'href',
-    `${portalUrl}/labs`
-  );
-  await page.getByRole('button', { name: 'Finish', exact: true }).click();
+  // Finishing hands control back to the portal, so the portal records the completion
+  // and frees the environment — the button navigates rather than only dismissing.
+  const returning = panel.getByRole('button', { name: 'Finish and return to the Academy' });
+  await expect(returning).toBeVisible();
+  const returned = page.waitForRequest((request) => request.url() === `${portalUrl}/labs`,
+                                       { timeout: 15_000 });
+  await returning.click();
+  await returned;
 
-  // A returnUrl on another origin is ignored.
+  // A returnUrl on another origin is ignored: plain Finish, no navigation off-console.
   await startLab(
     page,
     '/academy/lessons/tour-console-basics/start?returnUrl=https://example.invalid/steal'
   );
   for (let step = 0; step < 5; step += 1) await continueButton.click();
-  await expect(panel.getByRole('link', { name: 'Return to the Academy' })).toHaveCount(0);
+  await expect(panel.getByRole('button', { name: 'Finish', exact: true })).toBeVisible();
+  await expect(
+    panel.getByRole('button', { name: 'Finish and return to the Academy' })
+  ).toHaveCount(0);
 });
 
 test('keeps the spotlight aligned while navigation menus move or hide its target', async ({

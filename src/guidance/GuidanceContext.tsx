@@ -454,6 +454,18 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       ? lesson.returnUrl
       : '';
 
+  // A rejected returnUrl used to fail silently: Finish just dismissed the panel and the
+  // launcher had no way to know its URL was refused. Say so once, with both origins —
+  // a scheme mismatch (http:// from a TLS-terminating route) looks identical otherwise.
+  useEffect(() => {
+    if (!lesson?.returnUrl || returnUrl || !settings.portalUrl) return;
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[academy] ignoring returnUrl ${lesson.returnUrl}: it must be on the AcademySettings ` +
+        `portalUrl origin (${settings.portalUrl}).`
+    );
+  }, [lesson?.returnUrl, returnUrl, settings.portalUrl]);
+
   return useMemo(
     () => ({
       active: Boolean(lesson),
@@ -606,9 +618,15 @@ const useTargetRect = ({ target, onTargetState }: TargetProps) => {
       layoutFrame = requestAnimationFrame(track);
     };
 
-    const observer = new MutationObserver((records) => {
+    // A mutation is only the START of a layout change: expanding a navigation section
+    // inserts its items (childList) and then animates them into place, so the rect the
+    // mutation-triggered measure reads is already stale by the time the transition
+    // settles — the spotlight ends up a few pixels off its target, permanently.
+    // Tracking every record type covers insertion-driven moves, and transitionend
+    // catches anything whose animation outlives the tracking window.
+    const observer = new MutationObserver(() => {
       update();
-      if (records.some((record) => record.type === 'attributes')) trackLayoutTransition();
+      trackLayoutTransition();
     });
     observer.observe(document.body, {
       attributeFilter: ['aria-expanded', 'hidden'],
@@ -618,6 +636,8 @@ const useTargetRect = ({ target, onTargetState }: TargetProps) => {
     });
     window.addEventListener('resize', update);
     window.addEventListener('scroll', update, true);
+    document.addEventListener('transitionend', update, true);
+    document.addEventListener('animationend', update, true);
     update();
 
     return () => {
@@ -626,6 +646,8 @@ const useTargetRect = ({ target, onTargetState }: TargetProps) => {
       observer.disconnect();
       window.removeEventListener('resize', update);
       window.removeEventListener('scroll', update, true);
+      document.removeEventListener('transitionend', update, true);
+      document.removeEventListener('animationend', update, true);
     };
   }, [onTargetState, resolvedTargetKey, target]);
 
@@ -781,14 +803,22 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) => {
         <dt>{value.primaryResource?.label ?? 'Resource'}</dt><dd>{value.resourcePhase}</dd>
       </dl>
       <div className="academy-guidance__actions">
-        <button type="button" className="academy-guidance__secondary" onClick={value.stop}>
-          {value.completed ? 'Finish' : 'Stop'}
+        <button
+          type="button"
+          className="academy-guidance__secondary"
+          onClick={() => {
+            value.stop();
+            // Finishing a portal-launched lab hands control back to the portal, which
+            // records the completion and frees the lab environment. Leaving it as a
+            // link next to Finish meant clicking Finish just dismissed the panel and
+            // the session stayed allocated.
+            if (value.completed && value.returnUrl) window.location.assign(value.returnUrl);
+          }}
+        >
+          {value.completed
+            ? (value.returnUrl ? 'Finish and return to the Academy' : 'Finish')
+            : 'Stop'}
         </button>
-        {value.completed && value.returnUrl ? (
-          <a className="academy-guidance__return" href={value.returnUrl}>
-            Return to the Academy
-          </a>
-        ) : null}
       </div>
     </aside>
   );

@@ -19,11 +19,11 @@ const lab = (spec: Partial<ConsoleLabResource['spec']> = {}): ConsoleLabResource
       {
         id: 'open',
         title: 'Open the pod',
-        description: 'Open {{podName}}',
-        target: { type: 'href', value: '/k8s/ns/{{namespace}}/pods/{{podName}}' },
+        description: 'Open <<podName>>',
+        target: { type: 'href', value: '/k8s/ns/<<namespace>>/pods/<<podName>>' },
         complete: {
-          operation: { type: 'navigate', path: '/k8s/ns/{{namespace}}/pods/{{podName}}' },
-          verify: { type: 'route', path: '/k8s/ns/{{namespace}}/pods/{{podName}}' }
+          operation: { type: 'navigate', path: '/k8s/ns/<<namespace>>/pods/<<podName>>' },
+          verify: { type: 'route', path: '/k8s/ns/<<namespace>>/pods/<<podName>>' }
         }
       }
     ],

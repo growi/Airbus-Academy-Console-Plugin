@@ -1,0 +1,31 @@
+{{- if .Values.build.enabled }}
+# In-cluster binary build. `bin/pluginctl deploy <target>` pushes an assembled build context
+# here; the Deployment's ImageStream trigger rolls the result out.
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: {{ include "academy.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: {{ include "academy.name" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+spec:
+  output:
+    to:
+      kind: ImageStreamTag
+      name: {{ include "academy.name" . }}:{{ .Values.image.tag }}
+  source:
+    type: Binary
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  triggers: []
+{{- end }}

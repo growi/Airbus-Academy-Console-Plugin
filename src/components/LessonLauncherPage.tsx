@@ -23,7 +23,7 @@ const LessonLauncherPage: FC = () => {
     decodeURIComponent(location.pathname.match(/^\/academy\/lessons\/([^/]+)\/start$/)?.[1] ?? '');
   const guidance = useGuidance();
   const { labs, loaded } = useConsoleLabs();
-  const [activeNamespace] = useActiveNamespace();
+  const [activeNamespace, setActiveNamespace] = useActiveNamespace();
   const [launched, setLaunched] = useState(false);
 
   const launch = useMemo<LabLaunchOptions>(() => {
@@ -48,8 +48,15 @@ const LessonLauncherPage: FC = () => {
 
   useEffect(() => {
     if (launched || !loaded || !module) return;
+    // Scope the console to the lab's namespace before starting. The active project is
+    // console-wide state that survives from whatever the user last opened in another
+    // tab, and every sidebar link is built from it — without this the learner is
+    // walked through the right steps in the wrong project.
+    const labNamespace = launch.parameters.namespace;
+    if (labNamespace && labNamespace !== activeNamespace) setActiveNamespace(labNamespace);
     setLaunched(guidance.startLab(labId, launch));
-  }, [guidance.startLab, labId, launch, launched, loaded, module]);
+  }, [activeNamespace, guidance.startLab, labId, launch, launched, loaded, module,
+      setActiveNamespace]);
 
   const title = module?.title ?? (loaded ? 'Academy lab unavailable' : 'Starting the lab…');
 

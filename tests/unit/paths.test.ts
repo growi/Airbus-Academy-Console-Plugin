@@ -26,10 +26,18 @@ test('a detail path matches the legacy form but keeps its namespace', () => {
   assert.ok(!pathsMatch('/k8s/ns/demo/deployments/api', '/k8s/ns/demo/apps~v1~Deployment/web'));
 });
 
-test('a list page matches the same list in another scope', () => {
+test('a list page matches the same list in a wider scope', () => {
   assert.ok(pathsMatch('/k8s/all-namespaces/core~v1~Pod', '/k8s/ns/demo/core~v1~Pod'));
   assert.ok(pathsMatch('/k8s/ns/demo/pods', '/k8s/all-namespaces/core~v1~Pod'));
   assert.ok(!pathsMatch('/k8s/all-namespaces/core~v1~Secret', '/k8s/ns/demo/core~v1~Pod'));
+});
+
+test('a list page does NOT match the same list in a different namespace', () => {
+  // A portal-launched lab must not advance while the console is scoped to whatever
+  // project the user had open before.
+  assert.ok(!pathsMatch('/k8s/ns/other/core~v1~Pod', '/k8s/ns/demo/core~v1~Pod'));
+  assert.ok(!pathsMatch('/k8s/ns/other/pods', '/k8s/ns/demo/core~v1~Pod'));
+  assert.ok(pathsMatch('/k8s/ns/demo/pods', '/k8s/ns/demo/core~v1~Pod'));
 });
 
 test('trailing slashes and unrelated paths', () => {
