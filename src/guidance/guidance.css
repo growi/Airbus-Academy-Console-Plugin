@@ -1,5 +1,9 @@
 .academy-guidance__spotlight {
-  animation: academy-guidance-pulse 6s ease-in-out infinite;
+  /* Three slow pulses, then a steady ring. The pulse says "this one, over here" when a step
+     starts; a learner reading the box does not need it flashing at them while they read, so
+     it breathes over six seconds rather than blinking. The element is keyed on the step, so
+     each new step pulses again. */
+  animation: academy-guidance-pulse 6s ease-in-out 3;
   border: 3px solid var(--pf-t--global--color--brand--default, #06c);
   border-radius: 6px;
   box-shadow: 0 0 0 9999px rgb(0 0 0 / 20%);
@@ -19,6 +23,21 @@
   position: fixed;
   right: 24px;
   z-index: 9999;
+}
+
+.academy-guidance__controller--compact {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  max-width: none;
+  padding: 8px 12px;
+  width: auto;
+}
+
+/* Set while the highlighted control sits under the panel's home corner — see usePanelDodge. */
+.academy-guidance--panel-left .academy-guidance__controller {
+  left: 24px;
+  right: auto;
 }
 
 .academy-guidance__bubble {

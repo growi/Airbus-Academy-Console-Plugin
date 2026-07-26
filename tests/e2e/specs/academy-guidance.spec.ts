@@ -6,15 +6,25 @@ const NAMESPACE = process.env.ACADEMY_NAMESPACE ?? 'dcs-academy-portal';
 const POD = process.env.ACADEMY_POD ?? 'dcs-academy-portal-db-1';
 const SESSION_KEY = 'academy-guidance.active-lab';
 
+// tour-console-areas alternates navigation steps with the acknowledge steps that explain the
+// list each one opened, so half of these advance on Next rather than on a console action.
 const AREA_STEPS = [
   'Open Workloads',
   'Open Deployments',
+  'One row, one workload',
   'Open Networking',
   'Open Services',
+  'Addresses, not pods',
   'Open Storage',
   'Open PersistentVolumeClaims',
-  'Open ConfigMaps'
+  'Bound or waiting',
+  'Open ConfigMaps',
+  'More than you created'
 ];
+
+/** Continue, or Next on a read-this step — the same button, relabelled. */
+const advanceButton = (page: Page) =>
+  page.getByRole('button', { name: /^(Continue|Next)$/ }).first();
 
 const login = async (page: Page) => {
   const username = process.env.CONSOLE_USERNAME ?? 'kubeadmin';
@@ -105,7 +115,7 @@ test('lists the default labs, searches them, and links to the Academy portal', a
   ).toBeVisible();
 
   await page.getByRole('button', { name: 'Start Find your way around the console' }).click();
-  await expect(page.locator('.academy-guidance__controller')).toContainText('Step 1 of 5');
+  await expect(page.locator('.academy-guidance__controller')).toContainText('Step 1 of 6');
   await page.getByRole('button', { name: 'Stop', exact: true }).click();
 });
 
@@ -139,20 +149,29 @@ test('advances an assisted lab from the learner\'s own console clicks', async ({
   // The reported bug: the console navigates to its legacy /deployments URL while the lab
   // declares apps~v1~Deployment, so a literal path comparison never completed this step.
   await page.getByRole('link', { name: 'Deployments', exact: true }).click();
+  // The list the click opened is explained by its own step, which only Next advances.
+  await expect(bubble).toContainText('One row, one workload');
+  await advanceButton(page).click();
   await expect(bubble).toContainText('Open Networking');
 
   const networking = page.locator('[data-quickstart-id="qs-nav-networking"]');
   if ((await networking.getAttribute('aria-expanded')) !== 'true') await networking.click();
   await page.getByRole('link', { name: 'Services', exact: true }).click();
+  await expect(bubble).toContainText('Addresses, not pods');
+  await advanceButton(page).click();
   await expect(bubble).toContainText('Open Storage');
 
   const storage = page.locator('[data-quickstart-id="qs-nav-storage"]');
   if ((await storage.getAttribute('aria-expanded')) !== 'true') await storage.click();
   await page.getByRole('link', { name: 'PersistentVolumeClaims', exact: true }).click();
+  await expect(bubble).toContainText('Bound or waiting');
+  await advanceButton(page).click();
   await expect(bubble).toContainText('Open ConfigMaps');
 
   await page.getByRole('link', { name: 'ConfigMaps', exact: true }).click();
-  await expect(panel).toContainText('you located the main resource areas');
+  await expect(bubble).toContainText('More than you created');
+  await advanceButton(page).click();
+  await expect(panel).toContainText('which navigation group holds workloads');
   await expect.poll(() => page.evaluate((key) => sessionStorage.getItem(key), SESSION_KEY))
     .toBeNull();
   await page.getByRole('button', { name: 'Finish', exact: true }).click();
@@ -191,15 +210,14 @@ test('Continue completes every step of an assisted lab without learner navigatio
   await startLab(page, `/academy/lessons/tour-console-areas/start?ns=${NAMESPACE}`);
 
   const panel = page.locator('.academy-guidance__controller');
-  const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
   for (const title of AREA_STEPS) {
     // The step shows in the bubble, or in the panel when its target cannot be measured.
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
     // Continue is never disabled — that is the point of the failsafe.
-    await expect(continueButton).toBeEnabled();
-    await continueButton.click();
+    await expect(advanceButton(page)).toBeEnabled();
+    await advanceButton(page).click();
   }
-  await expect(panel).toContainText('you located the main resource areas');
+  await expect(panel).toContainText('which navigation group holds workloads');
   // The console appends its own list query parameters (?page=1&perPage=50).
   await expect(page).toHaveURL(
     new RegExp(`/k8s/ns/${NAMESPACE}/(core~v1~ConfigMap|configmaps)(\\?|$)`)
@@ -224,6 +242,27 @@ test('Back returns to the previous step and does not bounce forward', async ({ p
   await expect.poll(() => storedStep(page)).toBe(0);
   // Workloads is still expanded, so naive auto-advance would immediately skip forward again.
   await page.waitForTimeout(1_500);
+  await expect(bubble).toContainText('Open Workloads');
+  expect(await storedStep(page)).toBe(0);
+});
+
+test('Hide clears the guidance off the console and Show brings the same step back', async ({
+  page
+}) => {
+  await login(page);
+  await startLab(page, `/academy/lessons/tour-console-areas/start?ns=${NAMESPACE}`);
+
+  const bubble = page.locator('.academy-guidance__bubble');
+  const spotlight = page.locator('.academy-guidance__spotlight');
+  await expect(bubble).toContainText('Open Workloads');
+
+  // A spotlight round a whole section, with a box beside it, is the thing covering the page a
+  // learner is trying to read. Both have to be able to get out of the way.
+  await page.getByRole('button', { name: 'Hide', exact: true }).click();
+  await expect(bubble).toBeHidden();
+  await expect(spotlight).toBeHidden();
+
+  await page.getByRole('button', { name: 'Show guidance' }).click();
   await expect(bubble).toContainText('Open Workloads');
   expect(await storedStep(page)).toBe(0);
 });
@@ -269,20 +308,23 @@ test('a hidden lab needs its launch parameters and is not listed', async ({ page
   const bubble = page.locator('.academy-guidance__bubble');
   await expect(bubble).toContainText('Open Workloads');
 
-  const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
   for (const title of [
     'Open Workloads',
     'Open Pods',
+    "One project's pods",
     'Open the lab pod',
+    'What is inside the pod',
     'Read the logs',
-    'Open a shell in the container'
+    "The application's own account",
+    'Open a shell in the container',
+    'A shell, with one rule'
   ]) {
     await expect(page.getByText(title, { exact: true }).first()).toBeVisible();
-    await continueButton.click();
+    await advanceButton(page).click();
   }
   await expect(page).toHaveURL(new RegExp(`/pods/${POD}/terminal$`));
   await expect(page.locator('.academy-guidance__controller'))
-    .toContainText('opened a shell inside its container');
+    .toContainText('a shell in its container');
 });
 
 test('offers a return link only for the configured portal origin', async ({ page }) => {
@@ -301,8 +343,7 @@ test('offers a return link only for the configured portal origin', async ({ page
     page,
     `/academy/lessons/tour-console-basics/start?returnUrl=${encodeURIComponent(portalUrl)}/labs`
   );
-  const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
-  for (let step = 0; step < 5; step += 1) await continueButton.click();
+  for (let step = 0; step < 6; step += 1) await advanceButton(page).click();
   const panel = page.locator('.academy-guidance__controller');
   // Finishing hands control back to the portal, so the portal records the completion
   // and frees the environment — the button navigates rather than only dismissing.
@@ -318,7 +359,7 @@ test('offers a return link only for the configured portal origin', async ({ page
     page,
     '/academy/lessons/tour-console-basics/start?returnUrl=https://example.invalid/steal'
   );
-  for (let step = 0; step < 5; step += 1) await continueButton.click();
+  for (let step = 0; step < 6; step += 1) await advanceButton(page).click();
   await expect(panel.getByRole('button', { name: 'Finish', exact: true })).toBeVisible();
   await expect(
     panel.getByRole('button', { name: 'Finish and return to the Academy' })
@@ -339,6 +380,8 @@ test('keeps the spotlight aligned while navigation menus move or hide its target
   // makes this assertion flaky under load.
   await expect(bubble).toContainText('Open Deployments');
   await page.getByRole('link', { name: 'Deployments', exact: true }).click();
+  await expect(bubble).toContainText('One row, one workload');
+  await advanceButton(page).click();
   await expect(bubble).toContainText('Open Networking');
 
   const networking = page.locator('[data-quickstart-id="qs-nav-networking"]');

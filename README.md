@@ -182,8 +182,13 @@ Supported targets:
 - `quickStartId` highlights an element carrying the corresponding `data-quickstart-id`.
 - `href` highlights an anchor with a matching console-relative URL.
 - `consoleElement` resolves a named semantic console control through the selected OpenShift
-  target adapter: `namespaceSelector`, `namespaceFilter`, `namespaceOption` (exact option text in
-  `value`), `navigationLink` (exact sidebar link name), and `resourceSearch`.
+  target adapter: `namespaceSelector`, `namespaceFilter`, `namespaceOption` / `menuItem` (exact
+  entry text of an open menu in `value`), `navigationLink` (exact sidebar link name),
+  `resourceSearch`, `actionsMenu` (the per-object Actions toggle on any details page),
+  `revealSecretValues` (the Reveal values toggle on a Secret), `detailsSection` (the block a
+  heading named in `value` introduces — the heading *and* its content, such as `Data` or
+  `Environment Variables`), and `pageContent` (whatever a tab put on screen — its table, event stream or YAML editor —
+  for bodies that carry no heading to address them by).
 
 Supported operations:
 
@@ -191,6 +196,7 @@ Supported operations:
 - `navigate` opens the configured console-relative path through the target router adapter.
 - `fillTarget` enters its configured `value` into the highlighted input using the browser's
   native input contract.
+- `none` does nothing, for a step that asks the learner to read rather than to change something.
 
 Supported verification conditions:
 
@@ -199,7 +205,12 @@ Supported verification conditions:
   the required state was reached.
 - `route` advances when the browser reaches a URL equivalent to the configured path.
 - `targetValue` advances when the highlighted input contains the configured exact value.
+- `targetText` advances when the target's own text equals the configured value. Use it for a
+  toggle whose only state is its label, such as Reveal values becoming `Hide values`.
 - `namespace` advances when the current console route is scoped to the configured namespace.
+- `acknowledge` never advances on its own: the learner presses **Next**. Use it for a step that
+  points at something to read — a page a lab has just opened has to be explained, and reading it
+  leaves nothing behind for a detector to see.
 
 Do not put CSS selectors or executable behavior in a launch URL. The launcher accepts only a lab
 name plus template parameters and resolves all behavior from the cluster's lab content.

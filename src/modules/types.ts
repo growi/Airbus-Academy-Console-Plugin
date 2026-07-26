@@ -8,13 +8,22 @@ export type TrainingTarget =
 export type CompletionOperation =
   | { type: 'activateTarget' }
   | { type: 'fillTarget'; value: string }
-  | { type: 'navigate'; path: string };
+  | { type: 'navigate'; path: string }
+  /** Nothing to do: the step asks the learner to look at something, not to change it. */
+  | { type: 'none' };
 
 export type CompletionVerification =
   | { type: 'targetAttribute'; attribute: string; value: string }
   | { type: 'targetValue'; value: string }
+  | { type: 'targetText'; value: string }
   | { type: 'namespace'; value: string }
-  | { type: 'route'; path: string };
+  | { type: 'route'; path: string }
+  /**
+   * Never satisfied by the console's state — the learner advances it with Next. For steps
+   * that point at something to read: the page a lab just opened has to be explained, and
+   * reading it leaves no trace the engine could detect.
+   */
+  | { type: 'acknowledge' };
 
 export type StepCompletion = {
   operation: CompletionOperation;

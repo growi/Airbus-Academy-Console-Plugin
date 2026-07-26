@@ -106,7 +106,7 @@ spec:
                             properties:
                               type:
                                 type: string
-                                enum: [activateTarget, fillTarget, navigate]
+                                enum: [activateTarget, fillTarget, navigate, none]
                             x-kubernetes-preserve-unknown-fields: true
                           verify:
                             type: object
@@ -114,7 +114,9 @@ spec:
                             properties:
                               type:
                                 type: string
-                                enum: [targetAttribute, targetValue, namespace, route]
+                                enum:
+                                  [targetAttribute, targetText, targetValue, namespace, route,
+                                   acknowledge]
                             x-kubernetes-preserve-unknown-fields: true
                         x-kubernetes-preserve-unknown-fields: true
       additionalPrinterColumns:

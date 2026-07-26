@@ -48,7 +48,10 @@ type Step = {
   id: string;
   title: string;
   target?: Target;
-  complete?: { operation?: { type: string; path?: string; value?: string } };
+  complete?: {
+    operation?: { type: string; path?: string; value?: string };
+    verify?: { type: string };
+  };
 };
 type Lab = { spec: { title: string; completionText?: string; steps: Step[] } };
 
@@ -89,6 +92,9 @@ const substituter = (namespace: string, params: Record<string, string>) => (valu
   return out;
 };
 
+/** Lab targets name console text verbatim — "…Secrets (envFrom)" is not a capture group. */
+const exactly = (value: string) => new RegExp(`^${value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`);
+
 /** The element the step highlights, resolved the way targets/ocp-4.2x/elements.ts resolves it. */
 const targetLocator = (page: Page, target: Target, subst: (v?: string) => string): Locator => {
   if (target.type === 'quickStartId') {
@@ -107,9 +113,25 @@ const targetLocator = (page: Page, target: Target, subst: (v?: string) => string
     case 'namespaceFilter':
       return page.locator('[data-test="dropdown-text-filter"], .co-namespace-dropdown input').first();
     case 'namespaceOption':
+    case 'menuItem':
       return page
         .locator('[data-test="dropdown-menu-item-link"], [role="menuitem"], [role="option"]')
-        .filter({ hasText: new RegExp(`^${subst(target.value)}$`) })
+        .filter({ hasText: exactly(subst(target.value)) })
+        .first();
+    case 'actionsMenu':
+      return page.locator('[data-test="actions-menu-button"], [data-test-id="actions-menu-button"]').first();
+    case 'revealSecretValues':
+      return page.locator('[data-test="reveal-values"], [data-test-id="reveal-values"]').first();
+    case 'detailsSection':
+      // The engine highlights the block, but the heading is what identifies it — and a Secret's
+      // Data heading carries the Reveal values button, so match on the start of the text.
+      return page
+        .locator('h2.co-section-heading, h2, h3')
+        .filter({ hasText: new RegExp(`^${subst(target.value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`) })
+        .first();
+    case 'pageContent':
+      return page
+        .locator('[role="grid"], .pf-v6-c-table, .co-sysevent-stream, .yaml-editor, .co-m-pane__body')
         .first();
     case 'resourceSearch':
       return page.locator('[data-test="name-filter-input"], .co-text-filter input').first();
@@ -119,7 +141,17 @@ const targetLocator = (page: Page, target: Target, subst: (v?: string) => string
 };
 
 /** Do what the learner would do to this element, not what the engine would do for them. */
-const act = async (locator: Locator, step: Step, subst: (v?: string) => string) => {
+const act = async (
+  page: Page,
+  locator: Locator,
+  step: Step,
+  subst: (v?: string) => string
+) => {
+  // A read-this step has no console action; Next in the guidance box IS the learner action.
+  if (step.complete?.verify?.type === 'acknowledge') {
+    await page.getByRole('button', { name: 'Next', exact: true }).first().click();
+    return;
+  }
   const operation = step.complete?.operation;
   if (operation?.type === 'fillTarget') {
     await locator.fill(subst(operation.value));
@@ -166,8 +198,15 @@ for (const lab of LABS) {
         locator,
         `${lab}/${step.id}: target not on the page the previous step ended on`
       ).toBeVisible();
+      // Being in the DOM is not enough — a section below the fold is "visible" to Playwright
+      // while the engine cannot measure it, and the learner is told to press Continue. The
+      // anchored bubble only renders once the target really was measured.
+      await expect(
+        bubble,
+        `${lab}/${step.id}: target found but not measurable — no anchored guidance`
+      ).toBeVisible();
 
-      await act(locator, step, subst);
+      await act(page, locator, step, subst);
 
       const next = spec.steps[index + 1];
       if (next) {
@@ -183,6 +222,13 @@ for (const lab of LABS) {
       const fragment = spec.completionText.split(/\s+/).slice(0, 6).join(' ');
       await expect(panel).toContainText(fragment);
     }
+
+    // Finish ends the portal session, so the completion screen must not be a one-way door:
+    // a learner who wants to re-read the last step has to be able to get back to it.
+    await page.getByRole('button', { name: 'Back to the last step' }).click();
+    const lastStep = spec.steps[spec.steps.length - 1];
+    await expect(page.getByText(lastStep.title, { exact: true }).first()).toBeVisible();
+
     // Continue exists as a failsafe, but this walkthrough must never have needed it.
     await page.getByRole('button', { name: /^(Finish|Stop)/ }).first().click();
   });

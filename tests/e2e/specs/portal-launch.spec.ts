@@ -44,7 +44,8 @@ test('a portal launch scopes the console to the lab namespace and returns on Fin
   );
   await expect(page.getByText('Lab started')).toBeVisible();
 
-  const continueButton = page.getByRole('button', { name: 'Continue', exact: true });
+  // Continue, or Next on a read-this step — the same button, relabelled.
+  const continueButton = page.getByRole('button', { name: /^(Continue|Next)$/ }).first();
   await continueButton.click();                       // Open Workloads
   await continueButton.click();                       // Open Pods
 
@@ -52,11 +53,13 @@ test('a portal launch scopes the console to the lab namespace and returns on Fin
   await expect(page).toHaveURL(new RegExp(`/k8s/ns/${SESSION_NS}/(core~v1~Pod|pods)`));
   await expect(page).not.toHaveURL(new RegExp(`/k8s/ns/${OTHER_NS}/`));
 
-  for (let step = 0; step < 3; step += 1) await continueButton.click();
+  // Through the rest of the lab: the pod list, the pod, its containers, logs and terminal,
+  // each navigation step followed by the step that explains what it opened.
+  for (let step = 0; step < 7; step += 1) await continueButton.click();
   await expect(page).toHaveURL(new RegExp(`/k8s/ns/${SESSION_NS}/pods/${POD}/terminal`));
 
   const panel = page.locator('.academy-guidance__controller');
-  await expect(panel).toContainText('opened a shell inside its container');
+  await expect(panel).toContainText('a shell in its container');
 
   // Finish must hand control back to the portal, not just dismiss the panel.
   const finish = page.getByRole('button', { name: 'Finish and return to the Academy' });

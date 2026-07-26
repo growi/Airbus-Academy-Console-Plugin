@@ -59,6 +59,8 @@ type GuidanceSnapshot = {
   highlightId: string;
   highlightTarget?: TrainingTarget;
   highlightTargetFound: boolean;
+  /** The learner asked the guidance out of the way so they can read the page underneath. */
+  hidden: boolean;
   labsLoaded: boolean;
   path: string;
   perspective: string;
@@ -76,6 +78,7 @@ type WatchedResource = K8sResourceCommon & {
 
 type GuidanceValue = GuidanceSnapshot & {
   goBack: () => void;
+  setHidden: (hidden: boolean) => void;
   performCurrentStep: () => void;
   reportHighlightTarget: (targetKey: string, found: boolean) => void;
   startLab: (labId: string, options: LabLaunchOptions) => boolean;
@@ -93,10 +96,12 @@ const defaultValue: GuidanceValue = {
   highlightId: '',
   highlightTarget: undefined,
   highlightTargetFound: false,
+  hidden: false,
   labsLoaded: false,
   path: '',
   performCurrentStep: () => undefined,
   perspective: '',
+  setHidden: () => undefined,
   primaryResource: undefined,
   resourcePhase: '',
   reportHighlightTarget: () => undefined,
@@ -182,12 +187,19 @@ const verificationSatisfied = (
       return parseNamespace(pathname) === verification.value;
     case 'targetValue':
       return inputForTarget(target)?.value === verification.value;
+    // A toggle that only reports its state through its own label — the Reveal values button
+    // on a Secret becomes "Hide values" and changes no attribute.
+    case 'targetText':
+      return target?.textContent?.trim() === verification.value;
     case 'targetAttribute':
       return (
         elementWithAttribute(target, verification.attribute)?.getAttribute(
           verification.attribute
         ) === verification.value
       );
+    // Reading leaves no trace in the DOM. Only Next advances an acknowledge step.
+    case 'acknowledge':
+      return false;
   }
 };
 
@@ -225,6 +237,9 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   /** Step the learner returned to with Back; auto-advance stays off until they leave it. */
   const [heldStep, setHeldStep] = useState(-1);
   const [resolvedHighlightId, setResolvedHighlightId] = useState('');
+  /** Spotlight and bubble sit on top of the console; a learner reading a YAML tab or a table
+      behind them needs to be able to put them away without losing the lab. */
+  const [hidden, setHidden] = useState(false);
   const [timerRemainingSeconds, setTimerRemainingSeconds] = useState<number>();
 
   const activeModule = useMemo(() => {
@@ -283,6 +298,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       const { module } = resolveLab(lab, options.parameters);
       if (!module) return false;
       setHeldStep(-1);
+      setHidden(false);
       setLesson({
         labId,
         mode: options.mode,
@@ -308,7 +324,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       const operation = currentStep.complete.operation;
       if (operation.type === 'navigate') navigate(resolveConsolePath(operation.path));
       else if (operation.type === 'fillTarget') fillInput(target, operation.value);
-      else target?.click();
+      else if (operation.type === 'activateTarget') target?.click();
     }
     advanceFrom(step);
   }, [advanceFrom, currentStep, location.pathname, navigate, step]);
@@ -320,14 +336,6 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       current && current.step === step ? { ...current, step: step - 1 } : current
     );
   }, [step]);
-
-  useEffect(() => {
-    if (!currentStep) return undefined;
-    const frame = requestAnimationFrame(() => {
-      findTarget(currentStep.target)?.scrollIntoView({ block: 'nearest' });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [currentStep]);
 
   useEffect(() => {
     const verification = currentStep?.complete.verify;
@@ -346,7 +354,10 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
 
   useEffect(() => {
     const verification = currentStep?.complete.verify;
-    if (!verification || !['targetAttribute', 'targetValue'].includes(verification.type)) {
+    if (
+      !verification ||
+      !['targetAttribute', 'targetValue', 'targetText'].includes(verification.type)
+    ) {
       return undefined;
     }
     let advanced = false;
@@ -478,6 +489,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       highlightId,
       highlightTarget,
       highlightTargetFound,
+      hidden,
       labsLoaded,
       path: location.pathname,
       performCurrentStep,
@@ -492,6 +504,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
             : 'loading',
       reportHighlightTarget,
       returnUrl,
+      setHidden,
       settings,
       startLab,
       step,
@@ -506,6 +519,7 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       highlightId,
       highlightTarget,
       highlightTargetFound,
+      hidden,
       labsLoaded,
       lesson,
       location.pathname,
@@ -554,6 +568,7 @@ const useTargetRect = ({ target, onTargetState }: TargetProps) => {
     let frame = 0;
     let layoutFrame = 0;
     let layoutDeadline = 0;
+    let scrolled = false;
     const measure = () => {
       const targetElement = findTarget(target);
       if (!targetElement) {
@@ -583,6 +598,17 @@ const useTargetRect = ({ target, onTargetState }: TargetProps) => {
       const visible = targetElement.getClientRects().length > 0 &&
         visibleRight > visibleLeft &&
         visibleBottom > visibleTop;
+      // The element exists but nothing of it is on screen: a section further down the page, or
+      // a navigation link scrolled out of the sidebar by an earlier step. An unmeasurable
+      // target reads to the learner as "waiting for the console element", so bring it into
+      // view — once per target, since a scroll that does not help must not loop. Scrolling on
+      // the step change instead is too early: the page is often still rendering. The scroll
+      // fires the listener below, which measures again against the new position.
+      if (!visible && !scrolled) {
+        scrolled = true;
+        targetElement.scrollIntoView({ block: 'center' });
+        return;
+      }
       onTargetState(resolvedTargetKey, visible);
       if (!visible) {
         setTargetRect(undefined);
@@ -713,7 +739,9 @@ const StepControls: FC<{ value: GuidanceValue }> = ({ value }) => (
         value.performCurrentStep();
       }}
     >
-      Continue
+      {/* On a step that only asks the learner to read something, this button is the step's
+          own action, not the failsafe it is everywhere else. */}
+      {value.currentStep?.complete.verify.type === 'acknowledge' ? 'Next' : 'Continue'}
     </button>
     {value.timerRemainingSeconds !== undefined ? (
       <small>Continuing in {value.timerRemainingSeconds}s</small>
@@ -721,21 +749,51 @@ const StepControls: FC<{ value: GuidanceValue }> = ({ value }) => (
   </div>
 );
 
+/**
+ * The panel sits bottom right, over the console. A menu that opens downwards — Actions on any
+ * details page — reaches into that corner on a short viewport, and the panel then swallows the
+ * clicks meant for its lower entries. When the highlighted target lands there, the panel moves
+ * to the other corner. The comparison is always against the panel's home position, never its
+ * current one, or moving it would clear the overlap and move it straight back.
+ */
+const usePanelDodge = (targetRect?: TargetRect) => {
+  useEffect(() => {
+    const panel = document.querySelector('.academy-guidance__controller');
+    const panelRect = panel?.getBoundingClientRect();
+    const gap = 24;
+    const overlaps = Boolean(
+      targetRect &&
+        panelRect &&
+        targetRect.right > window.innerWidth - gap - panelRect.width &&
+        targetRect.left < window.innerWidth - gap &&
+        targetRect.bottom > window.innerHeight - gap - panelRect.height &&
+        targetRect.top < window.innerHeight - gap
+    );
+    document.body.classList.toggle('academy-guidance--panel-left', overlaps);
+  }, [targetRect]);
+
+  useEffect(() => () => document.body.classList.remove('academy-guidance--panel-left'), []);
+};
+
 const GuidanceTarget: FC<{ value: GuidanceValue }> = ({ value }) => {
   const targetRect = useTargetRect({
     target: value.highlightTarget,
     onTargetState: value.reportHighlightTarget
   });
+  usePanelDodge(targetRect);
 
   // The measured rect belongs to the previous step for one render after the step changes.
   // Gating on highlightTargetFound keeps the bubble and the panel's fallback step block
   // mutually exclusive, so a step never shows two Continue buttons.
-  if (!targetRect || !value.highlightTargetFound) return null;
+  if (value.hidden || !targetRect || !value.highlightTargetFound) return null;
   const bubble = positionBubble(targetRect);
 
   return (
     <>
       <div
+        // Remounts on every step, which restarts the finite attention pulse. Without the key
+        // React reuses the div and only the first step of a lab ever pulses.
+        key={value.step}
         className="academy-guidance__spotlight"
         style={{
           height: targetRect.height,
@@ -770,11 +828,39 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) => {
     );
   }
 
+  // Put away: the spotlight rings a whole section and the bubble sits beside it, so on a page
+  // the learner wants to read — a YAML manifest, a long table — the guidance is the thing in
+  // the way. Detection keeps running underneath, so the lab is where they left it.
+  if (value.hidden) {
+    return (
+      <aside
+        className="academy-guidance__controller academy-guidance__controller--compact"
+        aria-live="polite"
+      >
+        <button type="button" onClick={() => value.setHidden(false)}>
+          Show guidance
+        </button>
+        <small> Step {value.step + 1} of {value.activeModule.steps.length}</small>
+      </aside>
+    );
+  }
+
   return (
     <aside className="academy-guidance__controller" aria-live="polite">
       <strong>{value.activeModule.title}</strong>
       {value.completed ? (
-        <p>{value.activeModule.completionText}</p>
+        <>
+          <p>{value.activeModule.completionText}</p>
+          {/* Finish is irreversible — it ends the portal session. A learner who wants one
+              more look at the last step must be able to get back to it. */}
+          <button
+            type="button"
+            className="academy-guidance__secondary"
+            onClick={() => value.goBack()}
+          >
+            Back to the last step
+          </button>
+        </>
       ) : (
         <>
           <p>Step {value.step + 1} of {value.activeModule.steps.length}</p>
@@ -803,6 +889,15 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) => {
         <dt>{value.primaryResource?.label ?? 'Resource'}</dt><dd>{value.resourcePhase}</dd>
       </dl>
       <div className="academy-guidance__actions">
+        {value.completed ? null : (
+          <button
+            type="button"
+            className="academy-guidance__secondary"
+            onClick={() => value.setHidden(true)}
+          >
+            Hide
+          </button>
+        )}
         <button
           type="button"
           className="academy-guidance__secondary"
