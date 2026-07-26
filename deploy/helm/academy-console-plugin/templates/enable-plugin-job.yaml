@@ -1,0 +1,102 @@
+{{- if .Values.consolePlugin.enable }}
+{{- $hook := dict "helm.sh/hook" "post-install,post-upgrade" "helm.sh/hook-delete-policy" "before-hook-creation,hook-succeeded" }}
+# A served plugin that is not listed in console.operator.openshift.io/cluster .spec.plugins does
+# nothing, but that object is a cluster singleton shared with every other plugin — so it is
+# appended to, never replaced. Idempotent: re-running the chart is a no-op once enabled.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ include "academy.name" . }}-enabler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hook | nindent 4 }}
+    helm.sh/hook-weight: "-5"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "academy.name" . }}-enabler
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hook | nindent 4 }}
+    helm.sh/hook-weight: "-5"
+rules:
+  - apiGroups: [operator.openshift.io]
+    resources: [consoles]
+    resourceNames: [cluster]
+    verbs: [get, patch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "academy.name" . }}-enabler
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hook | nindent 4 }}
+    helm.sh/hook-weight: "-4"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "academy.name" . }}-enabler
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "academy.name" . }}-enabler
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "academy.name" . }}-enabler
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    {{- toYaml $hook | nindent 4 }}
+    helm.sh/hook-weight: "0"
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        {{- include "academy.labels" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "academy.name" . }}-enabler
+      containers:
+        - name: enable
+          image: {{ .Values.consolePlugin.job.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -o errexit -o nounset -o pipefail
+              plugin={{ include "academy.name" . | quote }}
+              enabled=$(oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins[*]}')
+              for name in ${enabled}; do
+                if [ "${name}" = "${plugin}" ]; then
+                  echo "${plugin} is already enabled"
+                  exit 0
+                fi
+              done
+              if [ -z "${enabled}" ]; then
+                oc patch console.operator.openshift.io cluster --type=merge \
+                  -p "{\"spec\":{\"plugins\":[\"${plugin}\"]}}"
+              else
+                oc patch console.operator.openshift.io cluster --type=json \
+                  -p "[{\"op\":\"add\",\"path\":\"/spec/plugins/-\",\"value\":\"${plugin}\"}]"
+              fi
+              echo "enabled ${plugin}; the console operator now rolls the console out"
+{{- end }}

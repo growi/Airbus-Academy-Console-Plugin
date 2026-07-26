@@ -1,0 +1,49 @@
+# ArgoCD application for the console plugin itself: CRDs, reader RBAC, the served plugin, and
+# the ConsolePlugin registration. Lab *content* is a separate application owned by the workshops
+# monorepo, so publishing a lab never syncs this one.
+#
+# Apply once with cluster-admin, or add it to the Airbus-Educates app-of-apps:
+#   oc apply -f deploy/argocd/academy-console-plugin.yaml
+#
+# build.enabled stays false here: GitOps deploys an image, it does not build one. Produce the
+# image first (`bin/pluginctl deploy <target>` on a connected cluster, or mirror an external
+# registry) and point image.tag at the target matching the cluster's OpenShift version.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: academy-console-plugin
+  namespace: openshift-gitops
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/rummens/Airbus-Academy-Console-Plugin
+    targetRevision: feat/decoupled-labs
+    path: deploy/helm/academy-console-plugin
+    helm:
+      releaseName: academy-guidance
+      valuesObject:
+        image:
+          # ocp-4.20 for OpenShift 4.20-4.21, ocp-4.22 for 4.22-4.23.
+          tag: 0.1.0-ocp4.22
+        build:
+          enabled: false
+        academySettings:
+          create: true
+          portalUrl: https://academy.apps-crc.testing
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: academy-console-plugin
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      # The ConsoleLab CRD schema is too large for kubectl's last-applied annotation.
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 15s
+        maxDuration: 5m
+        factor: 2

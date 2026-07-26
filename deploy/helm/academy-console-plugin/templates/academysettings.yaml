@@ -1,0 +1,22 @@
+{{- if .Values.academySettings.create }}
+{{- if not .Values.academySettings.portalUrl }}
+{{- fail "academySettings.create is true but academySettings.portalUrl is empty" }}
+{{- end }}
+# Per-cluster plugin settings. portalUrl does two things: it is the link at the bottom of the
+# lab catalog, and it is the only origin a launch URL's returnUrl may point at.
+apiVersion: academy.dcs/v1alpha1
+kind: AcademySettings
+metadata:
+  name: cluster
+  labels:
+    {{- include "academy.labels" . | nindent 4 }}
+  annotations:
+    # A post hook, because Helm validates the whole manifest against the API server before
+    # creating anything — and on a fresh install the AcademySettings CRD does not exist yet.
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  portalUrl: {{ .Values.academySettings.portalUrl | quote }}
+  portalLinkText: {{ .Values.academySettings.portalLinkText | quote }}
+{{- end }}

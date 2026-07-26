@@ -1,0 +1,54 @@
+# Name of the ConsolePlugin and of every object the chart creates. The console operator
+# enables a plugin *by this name*, so changing it means re-enabling the plugin.
+pluginName: academy-guidance
+
+image:
+  # Empty means the cluster-internal registry in the release namespace, i.e.
+  # image-registry.openshift-image-registry.svc:5000/<release namespace>/<pluginName>.
+  # Set an explicit repository when pulling from an external or mirrored registry.
+  repository: ""
+  # The image tag is target-specific: 0.1.0-ocp4.20 or 0.1.0-ocp4.22. See targets/<t>/target.env.
+  tag: 0.1.0-ocp4.22
+  pullPolicy: Always
+
+replicas: 1
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+crds:
+  # ConsoleLab + AcademySettings. Both are annotated to survive an uninstall, so removing the
+  # plugin never deletes the lab content other repositories have published into the cluster.
+  install: true
+
+rbac:
+  # Lets every authenticated user read lab content and plugin settings. Without it the catalog
+  # is empty for everyone but cluster-admin.
+  create: true
+
+build:
+  # In-cluster binary build (ImageStream + BuildConfig), used by `bin/pluginctl deploy`.
+  # Off for GitOps: ArgoCD deploys an image somebody already built.
+  enabled: false
+
+consolePlugin:
+  # Append pluginName to console.operator.openshift.io/cluster .spec.plugins with a post-install
+  # hook, because a plugin that is served but not enabled does nothing. Idempotent; never
+  # removes another plugin.
+  enable: true
+  job:
+    image: image-registry.openshift-image-registry.svc:5000/openshift/cli:latest
+
+academySettings:
+  # The one cluster-wide AcademySettings object. portalUrl is the link at the bottom of the lab
+  # catalog *and* the only origin a launch URL's returnUrl may point at, so it differs per
+  # cluster and has no sensible default.
+  create: false
+  portalUrl: ""
+  portalLinkText: Want more labs? Check out the DCS Academy

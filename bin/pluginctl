@@ -6,6 +6,9 @@ set -o pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_ROOT="${ROOT}/.build"
+CHART="${ROOT}/deploy/helm/academy-console-plugin"
+RELEASE=academy-guidance
+NAMESPACE=academy-console-plugin
 
 usage() {
   cat <<'EOF'
@@ -17,8 +20,8 @@ Commands:
   build <target>               Install, typecheck, and build locally
   container-build <target>     Build a locally tagged container with Podman
   image-build <target>         Run the target's OpenShift binary build
-  render <target>              Render the target's Kustomize overlay
-  deploy <target>              Apply, build, and roll out the target
+  render <target>              Render the Helm chart for the target
+  deploy <target>              Install the chart, build, and roll out the target
   clean [target]               Remove one or all generated build contexts
 
 Targets:
@@ -58,6 +61,13 @@ load_target() {
   # shellcheck disable=SC1090
   source "$(target_dir "${target}")/target.env"
   [[ -n "${IMAGE_TAG}" ]] || die "IMAGE_TAG is not configured for ${target}"
+  # build.enabled: this path builds the image in the cluster. GitOps deploys a built image
+  # instead — see deploy/argocd/academy-console-plugin.yaml.
+  chart_flags=(
+    --namespace "${NAMESPACE}"
+    --set "image.tag=${IMAGE_TAG}"
+    --set build.enabled=true
+  )
 }
 
 prepare_target() {
@@ -125,15 +135,19 @@ case "${1:-help}" in
     ;;
   render)
     [[ -n "${target}" ]] || die 'target is required'
-    require_command oc
-    validate_target "${target}"
-    oc kustomize "${ROOT}/deploy/overlays/${target}"
+    require_command helm
+    load_target "${target}"
+    helm template "${RELEASE}" "${CHART}" "${chart_flags[@]}" "${@:3}"
     ;;
   deploy)
     [[ -n "${target}" ]] || die 'target is required'
     require_command oc
-    validate_target "${target}"
-    oc apply -k "${ROOT}/deploy/overlays/${target}"
+    require_command helm
+    load_target "${target}"
+    # The image does not exist before the first build, so the rollout is waited on afterwards
+    # rather than by helm --wait.
+    helm upgrade --install "${RELEASE}" "${CHART}" --create-namespace \
+      "${chart_flags[@]}" "${@:3}"
     prepare_target "${target}"
     oc start-build academy-guidance -n academy-console-plugin \
       --from-dir="$(build_dir "${target}")" --follow

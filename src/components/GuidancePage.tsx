@@ -1,5 +1,10 @@
-import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
 import {
+  DocumentTitle,
+  ListPageHeader,
+  useActiveNamespace
+} from '@openshift-console/dynamic-plugin-sdk';
+import {
+  Alert,
   Button,
   Content,
   DataList,
@@ -8,9 +13,6 @@ import {
   DataListItem,
   DataListItemCells,
   DataListItemRow,
-  FormSelect,
-  FormSelectOption,
-  Label,
   PageSection,
   SearchInput,
   Toolbar,
@@ -20,118 +22,142 @@ import {
 import { type FC, useMemo, useState } from 'react';
 
 import { useGuidance } from '../guidance/GuidanceContext';
-import { trainingModuleCatalog } from '../modules/catalog';
-import type { TrainingMode } from '../modules/types';
+import { activeNamespaceParameters, resolveLab, useConsoleLabs } from '../modules/labs';
 import './GuidancePage.css';
-
-type ModeFilter = 'all' | TrainingMode;
-
-const modeLabels: Record<TrainingMode, string> = {
-  assisted: 'Assisted',
-  continue: 'Continue',
-  timed: 'Timed'
-};
-
-const modeColors: Record<TrainingMode, 'blue' | 'purple' | 'orange'> = {
-  assisted: 'blue',
-  continue: 'purple',
-  timed: 'orange'
-};
 
 const GuidancePage: FC = () => {
   const guidance = useGuidance();
+  const { labs, loaded, error } = useConsoleLabs();
+  const [activeNamespace] = useActiveNamespace();
   const [search, setSearch] = useState('');
-  const [mode, setMode] = useState<ModeFilter>('all');
-  const visibleTours = useMemo(() => {
+
+  const parameters = useMemo(() => activeNamespaceParameters(activeNamespace), [activeNamespace]);
+
+  const visibleLabs = useMemo(() => {
     const query = search.trim().toLocaleLowerCase();
-    return trainingModuleCatalog.filter(({ module, mode: moduleMode }) =>
-      (mode === 'all' || moduleMode === mode) &&
-      (!query || `${module.title} ${module.description}`.toLocaleLowerCase().includes(query))
-    );
-  }, [mode, search]);
+    return labs
+      .map((lab) => ({ lab, ...resolveLab(lab, parameters) }))
+      .filter(({ lab, module, missingParameters }) => {
+        const visibility = module?.visibility ?? lab.spec?.visibility ?? 'default';
+        if (visibility !== 'default') return false;
+        // A default lab that still needs a parameter is listed, but cannot start until the
+        // learner selects a project — hiding it would look like the catalog lost a lab.
+        const title = module?.title ?? lab.spec?.title ?? '';
+        const description = module?.description ?? lab.spec?.description ?? '';
+        return (
+          (module || missingParameters.length) &&
+          (!query || `${title} ${description}`.toLocaleLowerCase().includes(query))
+        );
+      });
+  }, [labs, parameters, search]);
 
   return (
     <>
-      <DocumentTitle>Academy guidance</DocumentTitle>
-      <ListPageHeader title="Academy tours" />
+      <DocumentTitle>Academy labs</DocumentTitle>
+      <ListPageHeader title="Academy labs" />
       <PageSection>
         <Content component="p">
-          Choose a guided tour of the OpenShift console. Assisted tours wait for your actions;
-          presentation tours perform each explained action after Continue or a countdown.
+          Choose a guided tour of the OpenShift console. The tour waits for your actions and
+          verifies them; Continue always moves you on, and Back repeats a step.
         </Content>
       </PageSection>
       <PageSection padding={{ default: 'noPadding' }}>
-        <Toolbar className="academy-tour-catalog__toolbar" clearAllFilters={() => {
-          setSearch('');
-          setMode('all');
-        }}>
+        {error ? (
+          <Alert
+            variant="warning"
+            isInline
+            title="Lab content could not be read from the cluster (ConsoleLab resources)."
+          />
+        ) : null}
+        <Toolbar className="academy-tour-catalog__toolbar" clearAllFilters={() => setSearch('')}>
           <ToolbarContent>
             <ToolbarItem className="academy-tour-catalog__search">
               <SearchInput
-                aria-label="Search tours"
-                placeholder="Search tours"
+                aria-label="Search labs"
+                placeholder="Search labs"
                 value={search}
                 onChange={(_event, value) => setSearch(value)}
                 onClear={() => setSearch('')}
               />
             </ToolbarItem>
-            <ToolbarItem>
-              <FormSelect
-                aria-label="Filter tours by mode"
-                value={mode}
-                onChange={(_event, value) => setMode(value as ModeFilter)}
-              >
-                <FormSelectOption value="all" label="All modes" />
-                <FormSelectOption value="assisted" label="Assisted" />
-                <FormSelectOption value="continue" label="Continue" />
-                <FormSelectOption value="timed" label="Timed" />
-              </FormSelect>
-            </ToolbarItem>
           </ToolbarContent>
         </Toolbar>
-        {visibleTours.length ? (
-          <DataList aria-label="Academy tours" isCompact>
-            {visibleTours.map(({ module, mode: moduleMode }) => (
-              <DataListItem key={module.id} aria-labelledby={`${module.id}-title`}>
-                <DataListItemRow>
-                  <DataListItemCells
-                    dataListCells={[
-                      <DataListCell key="tour" width={3}>
-                        <strong id={`${module.id}-title`}>{module.title}</strong>
-                        <p className="academy-tour-catalog__description">{module.description}</p>
-                      </DataListCell>,
-                      <DataListCell key="mode" width={1}>
-                        <Label color={modeColors[moduleMode]}>{modeLabels[moduleMode]}</Label>
-                      </DataListCell>,
-                      <DataListCell key="steps" width={1}>
-                        {module.steps.length} steps
-                      </DataListCell>
-                    ]}
-                  />
-                  <DataListAction
-                    aria-label={`Actions for ${module.title}`}
-                    aria-labelledby={`${module.id}-title ${module.id}-start`}
-                    id={`${module.id}-start`}
-                  >
-                    <Button
-                      aria-label={`Start ${module.title}`}
-                      variant="primary"
-                      onClick={() => guidance.startModule(module.id)}
+        {visibleLabs.length ? (
+          <DataList aria-label="Academy labs" isCompact>
+            {visibleLabs.map(({ lab, module, missingParameters }) => {
+              const id = lab.metadata?.name ?? '';
+              const startable = Boolean(module);
+              return (
+                <DataListItem key={id} aria-labelledby={`${id}-title`}>
+                  <DataListItemRow>
+                    <DataListItemCells
+                      dataListCells={[
+                        <DataListCell key="lab" width={3}>
+                          <strong id={`${id}-title`}>{module?.title ?? lab.spec?.title}</strong>
+                          <p className="academy-tour-catalog__description">
+                            {module?.description ?? lab.spec?.description}
+                          </p>
+                          {startable ? null : (
+                            <p className="academy-tour-catalog__description">
+                              Select a project first — this lab needs{' '}
+                              {missingParameters.join(', ')}.
+                            </p>
+                          )}
+                        </DataListCell>,
+                        <DataListCell key="steps" width={1}>
+                          {(module?.steps ?? lab.spec?.steps ?? []).length} steps
+                        </DataListCell>
+                      ]}
+                    />
+                    <DataListAction
+                      aria-label={`Actions for ${module?.title ?? id}`}
+                      aria-labelledby={`${id}-title ${id}-start`}
+                      id={`${id}-start`}
                     >
-                      Start tour
-                    </Button>
-                  </DataListAction>
-                </DataListItemRow>
-              </DataListItem>
-            ))}
+                      <Button
+                        aria-label={`Start ${module?.title ?? id}`}
+                        variant="primary"
+                        isDisabled={!startable}
+                        onClick={() => guidance.startLab(id, { parameters })}
+                      >
+                        Start lab
+                      </Button>
+                      <Button
+                        aria-label={`Watch ${module?.title ?? id}`}
+                        variant="secondary"
+                        isDisabled={!startable}
+                        onClick={() => guidance.startLab(id, { mode: 'timed', parameters })}
+                      >
+                        Watch demo
+                      </Button>
+                    </DataListAction>
+                  </DataListItemRow>
+                </DataListItem>
+              );
+            })}
           </DataList>
         ) : (
           <div className="academy-tour-catalog__empty">
-            <strong>No matching tours</strong>
-            <p>Adjust the search text or selected mode.</p>
+            <strong>{loaded ? 'No matching labs' : 'Loading labs…'}</strong>
+            {loaded ? (
+              <p>
+                {search
+                  ? 'Adjust the search text.'
+                  : 'No ConsoleLab resources are published on this cluster yet.'}
+              </p>
+            ) : null}
           </div>
         )}
       </PageSection>
+      {guidance.settings.portalUrl ? (
+        <PageSection>
+          <Content component="p" className="academy-tour-catalog__portal">
+            <a href={guidance.settings.portalUrl} rel="noreferrer noopener" target="_blank">
+              {guidance.settings.portalLinkText}
+            </a>
+          </Content>
+        </PageSection>
+      ) : null}
     </>
   );
 };

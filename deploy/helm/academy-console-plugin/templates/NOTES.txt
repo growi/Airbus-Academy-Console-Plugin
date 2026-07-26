@@ -1,0 +1,29 @@
+{{ .Chart.Name }} {{ .Chart.Version }} installed as {{ .Release.Name }} in {{ .Release.Namespace }}.
+
+Image:  {{ include "academy.image" . }}
+CRDs:   {{ if .Values.crds.install }}ConsoleLab + AcademySettings installed (kept on uninstall){{ else }}not managed by this release{{ end }}
+Build:  {{ if .Values.build.enabled }}in-cluster BuildConfig — push a context with `bin/pluginctl deploy <target>`{{ else }}disabled — the image must already exist in the registry{{ end }}
+
+{{ if .Values.consolePlugin.enable -}}
+The plugin was appended to console.operator.openshift.io/cluster .spec.plugins by the enabler
+job. Verify, then refresh the browser once the console has rolled out:
+
+  oc get console.operator.openshift.io cluster -o jsonpath='{.spec.plugins}{"\n"}'
+{{- else -}}
+consolePlugin.enable is false, so the plugin is served but not active. Enable it with:
+
+  oc patch console.operator.openshift.io cluster --type=json \
+    -p='[{"op":"add","path":"/spec/plugins/-","value":"{{ include "academy.name" . }}"}]'
+{{- end }}
+
+{{ if not .Values.academySettings.create -}}
+No AcademySettings object was created, so the lab catalog shows no portal link and every
+launch-URL returnUrl is refused. Set academySettings.create=true and academySettings.portalUrl.
+{{- end }}
+
+Lab content is not part of this chart. Labs are ConsoleLab objects published by the workshops
+monorepo's own ArgoCD application:
+
+  oc get consolelabs
+
+Then open Home -> Academy labs in the console.
