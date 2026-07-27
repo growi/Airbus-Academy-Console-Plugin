@@ -6,6 +6,7 @@
   "completionText": "Lesson complete: the OpenShift console is showing Pods in the Educates session namespace.",
   "onComplete": {
     "action": "redirect",
+    "historyParameter": "returnHistoryLength",
     "parameter": "redirectUri",
     "label": "Return to Academy lesson"
   },
