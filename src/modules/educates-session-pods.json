@@ -5,10 +5,11 @@
   "description": "Open the native OpenShift Pods view for the namespace allocated to this Educates session.",
   "completionText": "Lesson complete: the OpenShift console is showing Pods in the Educates session namespace.",
   "onComplete": {
-    "action": "returnToOpener",
+    "action": "redirect",
+    "parameter": "redirectUri",
     "label": "Return to Academy lesson"
   },
-  "parameters": ["namespace"],
+  "parameters": ["namespace", "redirectUri"],
   "context": {
     "primaryResource": "rootCa",
     "resources": {

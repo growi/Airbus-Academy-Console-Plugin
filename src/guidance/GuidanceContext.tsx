@@ -37,8 +37,8 @@ type GuidanceSnapshot = {
   active: boolean;
   activeModule?: TrainingModule;
   activeTab: string;
+  canCompleteModule: boolean;
   canPerformCurrentStep: boolean;
-  canReturnToOpener: boolean;
   completed: boolean;
   currentStep?: TrainingStep;
   currentNamespace: string;
@@ -74,8 +74,8 @@ const defaultValue: GuidanceValue = {
   active: false,
   activeModule: undefined,
   activeTab: '',
+  canCompleteModule: false,
   canPerformCurrentStep: false,
-  canReturnToOpener: false,
   clearHighlight: () => undefined,
   completeModule: () => undefined,
   completed: false,
@@ -209,12 +209,18 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
   });
   const currentStep = activeModule?.steps[step];
   const completed = Boolean(active && activeModule && step >= activeModule.steps.length);
-  const canReturnToOpener = Boolean(
-    completed &&
-    activeModule?.onComplete?.action === 'returnToOpener' &&
-    window.opener &&
-    !window.opener.closed
-  );
+  const completion = activeModule?.onComplete;
+  const canCompleteModule = Boolean(completed && (
+    (
+      completion?.action === 'returnToOpener' &&
+      window.opener &&
+      !window.opener.closed
+    ) ||
+    (
+      completion?.action === 'redirect' &&
+      activeModuleParameters[completion.parameter]
+    )
+  ));
   const highlightId = targetKey(highlightTarget);
   const highlightTargetFound = Boolean(highlightId && resolvedHighlightId === highlightId);
   const canPerformCurrentStep = Boolean(
@@ -266,14 +272,18 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     sessionStorage.removeItem(SESSION_KEY);
   }, []);
   const completeModule = useCallback(() => {
-    if (
-      activeModule?.onComplete?.action !== 'returnToOpener' ||
-      !window.opener ||
-      window.opener.closed
-    ) return;
-    window.opener.focus();
-    window.setTimeout(() => window.close(), 0);
-  }, [activeModule]);
+    const moduleCompletion = activeModule?.onComplete;
+    if (moduleCompletion?.action === 'returnToOpener') {
+      if (!window.opener || window.opener.closed) return;
+      window.opener.focus();
+      window.setTimeout(() => window.close(), 0);
+      return;
+    }
+    if (moduleCompletion?.action === 'redirect') {
+      const redirectUri = activeModuleParameters[moduleCompletion.parameter];
+      if (redirectUri) window.location.assign(redirectUri);
+    }
+  }, [activeModule, activeModuleParameters]);
   const performCurrentStep = useCallback(() => {
     if (!canPerformCurrentStep || !currentStep?.complete.presentation) return;
     const verification = currentStep.complete.verify;
@@ -454,8 +464,8 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
       active,
       activeModule,
       activeTab: parseTab(location.pathname, primaryResource),
+      canCompleteModule,
       canPerformCurrentStep,
-      canReturnToOpener,
       clearHighlight,
       completeModule,
       completed,
@@ -486,8 +496,8 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     [
       active,
       activeModule,
+      canCompleteModule,
       canPerformCurrentStep,
-      canReturnToOpener,
       clearHighlight,
       completeModule,
       completed,
@@ -728,13 +738,13 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) =>
       {value.completed ? (
         <>
           <p>{value.activeModule?.completionText}</p>
-          {value.activeModule?.onComplete?.action === 'returnToOpener' ? (
-            value.canReturnToOpener ? (
+          {value.activeModule?.onComplete ? (
+            value.canCompleteModule ? (
               <button type="button" onClick={value.completeModule}>
                 {value.activeModule.onComplete.label ?? 'Return to lesson'}
               </button>
             ) : (
-              <p><small>The lesson tab is unavailable. Close this tab to return manually.</small></p>
+              <p><small>The lesson return destination is unavailable.</small></p>
             )
           ) : null}
         </>

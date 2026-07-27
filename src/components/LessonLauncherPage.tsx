@@ -14,17 +14,22 @@ const LessonLauncherPage: FC = () => {
     decodeURIComponent(location.pathname.match(/^\/academy\/lessons\/([^/]+)\/start$/)?.[1] ?? '');
   const guidance = useGuidance();
   const module = getTrainingModule(moduleId);
-  const namespace = new URLSearchParams(location.search).get('namespace') ?? undefined;
+  const searchParameters = new URLSearchParams(location.search);
+  const namespace = searchParameters.get('namespace') ?? undefined;
+  const redirectUri = searchParameters.get('redirectUri') ?? undefined;
   const [started, setStarted] = useState<boolean>();
 
   useEffect(() => {
     if (module) {
       setStarted(guidance.startModule(
         module.id,
-        namespace ? { namespace } : {}
+        {
+          ...(namespace ? { namespace } : {}),
+          ...(redirectUri ? { redirectUri } : {})
+        }
       ));
     }
-  }, [guidance.startModule, module, namespace]);
+  }, [guidance.startModule, module, namespace, redirectUri]);
 
   return (
     <>
@@ -43,7 +48,7 @@ const LessonLauncherPage: FC = () => {
           <Alert
             variant="danger"
             isInline
-            title="The lesson link is missing a valid namespace parameter"
+            title="The lesson link is missing a valid runtime parameter"
           />
         ) : (
           <Alert

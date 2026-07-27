@@ -9,6 +9,14 @@ const namespacePattern = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/;
 const isValidParameter = (name: TrainingModuleParameter, value?: string) => {
   if (!value) return false;
   if (name === 'namespace') return value.length <= 63 && namespacePattern.test(value);
+  if (name === 'redirectUri') {
+    try {
+      new URL(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }
   return false;
 };
 
