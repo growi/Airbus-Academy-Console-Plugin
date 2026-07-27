@@ -281,6 +281,17 @@ export const useGuidanceValuesForContext = (): GuidanceValue => {
     }
     if (moduleCompletion?.action === 'redirect') {
       const redirectUri = activeModuleParameters[moduleCompletion.parameter];
+      const returnHistoryLength = moduleCompletion.historyParameter
+        ? Number(activeModuleParameters[moduleCompletion.historyParameter])
+        : undefined;
+      if (
+        Number.isSafeInteger(returnHistoryLength) &&
+        returnHistoryLength &&
+        returnHistoryLength < window.history.length
+      ) {
+        window.history.go(returnHistoryLength - window.history.length);
+        return;
+      }
       if (redirectUri) window.location.assign(redirectUri);
     }
   }, [activeModule, activeModuleParameters]);

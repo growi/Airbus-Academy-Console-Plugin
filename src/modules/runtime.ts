@@ -17,6 +17,7 @@ const isValidParameter = (name: TrainingModuleParameter, value?: string) => {
       return false;
     }
   }
+  if (name === 'returnHistoryLength') return /^[1-9]\d*$/.test(value);
   return false;
 };
 
@@ -48,6 +49,11 @@ export const instantiateTrainingModule = (
   parameters: TrainingModuleParameters = {}
 ) => {
   if (!(module.parameters ?? []).every((name) => isValidParameter(name, parameters[name]))) {
+    return undefined;
+  }
+  if (!Object.entries(parameters).every(([name, value]) =>
+    isValidParameter(name as TrainingModuleParameter, value)
+  )) {
     return undefined;
   }
   return substituteParameters(module, parameters) as TrainingModule;

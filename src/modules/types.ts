@@ -55,6 +55,7 @@ export type TrainingCompletion =
     }
   | {
       action: 'redirect';
+      historyParameter?: 'returnHistoryLength';
       label?: string;
       parameter: 'redirectUri';
     };
@@ -72,7 +73,10 @@ export type TrainingModule = {
 
 export type TrainingMode = 'assisted' | 'continue' | 'timed';
 
-export type TrainingModuleParameter = 'namespace' | 'redirectUri';
+export type TrainingModuleParameter =
+  | 'namespace'
+  | 'redirectUri'
+  | 'returnHistoryLength';
 
 export type TrainingModuleParameters = Partial<Record<TrainingModuleParameter, string>>;
 

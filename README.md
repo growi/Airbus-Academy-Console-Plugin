@@ -226,13 +226,18 @@ A same-tab integration can redirect back to a runtime URL instead:
 ```json
 "onComplete": {
   "action": "redirect",
+  "historyParameter": "returnHistoryLength",
   "parameter": "redirectUri",
   "label": "Return to Academy lesson"
 }
 ```
 
-For this PoC, `redirectUri` is checked only for URL syntax. A production integration must restrict
-allowed origins and protocols before treating externally supplied redirect targets as trusted.
+If the launcher receives `returnHistoryLength`, the completion action traverses back to that
+browser-history checkpoint. This restores an Educates dashboard from browser history with its
+split layout and current instruction iframe intact. If the checkpoint is absent or invalid, the
+plugin redirects to `redirectUri`. For this PoC, `redirectUri` is checked only for URL syntax. A
+production integration must restrict allowed origins and protocols before treating externally
+supplied redirect targets as trusted.
 
 For this PoC:
 

@@ -125,6 +125,29 @@ test('starts a tour with a runtime Educates namespace', async ({ page }) => {
   await popup.close();
 });
 
+test('returns a same-tab external tour to its browser history checkpoint', async ({ page }) => {
+  await login(page);
+  await page.evaluate(() => sessionStorage.clear());
+  await page.goto('/academy/guidance');
+  const returnHistoryLength = await page.evaluate(() => history.length);
+  const redirectUri = `${new URL(page.url()).origin}/academy/guidance`;
+  await page.goto(
+    `/academy/lessons/educates-session-pods/start?namespace=academy-console-plugin&redirectUri=${encodeURIComponent(redirectUri)}&returnHistoryLength=${returnHistoryLength}`
+  );
+
+  const bubble = page.locator('.academy-guidance__bubble');
+  await expect(bubble).toContainText('Open Workloads');
+  await expandWorkloads(page);
+  await expect(bubble).toContainText('Open session Pods');
+  await page.getByRole('link', { name: 'Pods', exact: true }).click();
+  await expect(page).toHaveURL(
+    /\/k8s\/ns\/academy-console-plugin\/core~v1~Pod$/
+  );
+
+  await page.getByRole('button', { name: 'Return to Academy lesson' }).click();
+  await expect(page).toHaveURL(/\/academy\/guidance$/);
+});
+
 test('presents the A08 OpenShift console tour', async ({ page }) => {
   await login(page);
   await page.evaluate(() => sessionStorage.clear());

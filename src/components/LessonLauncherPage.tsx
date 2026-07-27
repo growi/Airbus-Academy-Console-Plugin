@@ -17,6 +17,8 @@ const LessonLauncherPage: FC = () => {
   const searchParameters = new URLSearchParams(location.search);
   const namespace = searchParameters.get('namespace') ?? undefined;
   const redirectUri = searchParameters.get('redirectUri') ?? undefined;
+  const returnHistoryLength =
+    searchParameters.get('returnHistoryLength') ?? undefined;
   const [started, setStarted] = useState<boolean>();
 
   useEffect(() => {
@@ -25,11 +27,18 @@ const LessonLauncherPage: FC = () => {
         module.id,
         {
           ...(namespace ? { namespace } : {}),
-          ...(redirectUri ? { redirectUri } : {})
+          ...(redirectUri ? { redirectUri } : {}),
+          ...(returnHistoryLength ? { returnHistoryLength } : {})
         }
       ));
     }
-  }, [guidance.startModule, module, namespace, redirectUri]);
+  }, [
+    guidance.startModule,
+    module,
+    namespace,
+    redirectUri,
+    returnHistoryLength
+  ]);
 
   return (
     <>

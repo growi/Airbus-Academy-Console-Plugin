@@ -28,6 +28,7 @@
           "required": ["action", "parameter"],
           "properties": {
             "action": { "const": "redirect" },
+            "historyParameter": { "const": "returnHistoryLength" },
             "label": { "type": "string", "minLength": 1 },
             "parameter": { "const": "redirectUri" }
           }
@@ -37,7 +38,7 @@
     "parameters": {
       "type": "array",
       "uniqueItems": true,
-      "items": { "enum": ["namespace", "redirectUri"] }
+      "items": { "enum": ["namespace", "redirectUri", "returnHistoryLength"] }
     },
     "context": {
       "type": "object",
