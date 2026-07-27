@@ -1,7 +1,7 @@
 import { DocumentTitle, ListPageHeader } from '@openshift-console/dynamic-plugin-sdk';
 import { Alert, Content, PageSection } from '@patternfly/react-core';
 import type { FC } from 'react';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useParams } from 'react-router';
 
 import { useGuidance } from '../guidance/GuidanceContext';
@@ -14,17 +14,29 @@ const LessonLauncherPage: FC = () => {
     decodeURIComponent(location.pathname.match(/^\/academy\/lessons\/([^/]+)\/start$/)?.[1] ?? '');
   const guidance = useGuidance();
   const module = getTrainingModule(moduleId);
+  const searchParameters = new URLSearchParams(location.search);
+  const namespace = searchParameters.get('namespace') ?? undefined;
+  const redirectUri = searchParameters.get('redirectUri') ?? undefined;
+  const [started, setStarted] = useState<boolean>();
 
   useEffect(() => {
-    if (module) guidance.startModule(module.id);
-  }, [guidance.startModule, module]);
+    if (module) {
+      setStarted(guidance.startModule(
+        module.id,
+        {
+          ...(namespace ? { namespace } : {}),
+          ...(redirectUri ? { redirectUri } : {})
+        }
+      ));
+    }
+  }, [guidance.startModule, module, namespace, redirectUri]);
 
   return (
     <>
       <DocumentTitle>{module?.title ?? 'Unknown Academy lesson'}</DocumentTitle>
       <ListPageHeader title={module?.title ?? 'Unknown Academy lesson'} />
       <PageSection>
-        {module ? (
+        {module && started !== false ? (
           <>
             <Alert variant="success" isInline title="Lesson started" />
             <Content component="p">
@@ -32,6 +44,12 @@ const LessonLauncherPage: FC = () => {
               guidance box. You can now leave this page; the lesson remains active in this tab.
             </Content>
           </>
+        ) : module ? (
+          <Alert
+            variant="danger"
+            isInline
+            title="The lesson link is missing a valid runtime parameter"
+          />
         ) : (
           <Alert
             variant="danger"

@@ -48,16 +48,33 @@ export type TrainingContext = {
   resources: Record<string, TrainingResource>;
 };
 
+export type TrainingCompletion =
+  | {
+      action: 'returnToOpener';
+      label?: string;
+    }
+  | {
+      action: 'redirect';
+      label?: string;
+      parameter: 'redirectUri';
+    };
+
 export type TrainingModule = {
   id: string;
   title: string;
   description: string;
   completionText: string;
+  onComplete?: TrainingCompletion;
+  parameters?: TrainingModuleParameter[];
   context: TrainingContext;
   steps: TrainingStep[];
 };
 
 export type TrainingMode = 'assisted' | 'continue' | 'timed';
+
+export type TrainingModuleParameter = 'namespace' | 'redirectUri';
+
+export type TrainingModuleParameters = Partial<Record<TrainingModuleParameter, string>>;
 
 export type TrainingModuleCatalogEntry = {
   mode: TrainingMode;

@@ -1,0 +1,49 @@
+{
+  "$schema": "./module.schema.json",
+  "id": "educates-session-pods",
+  "title": "Educates session: Open Pods",
+  "description": "Open the native OpenShift Pods view for the namespace allocated to this Educates session.",
+  "completionText": "Lesson complete: the OpenShift console is showing Pods in the Educates session namespace.",
+  "onComplete": {
+    "action": "redirect",
+    "parameter": "redirectUri",
+    "label": "Return to Academy lesson"
+  },
+  "parameters": ["namespace", "redirectUri"],
+  "context": {
+    "primaryResource": "rootCa",
+    "resources": {
+      "rootCa": {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "label": "Session namespace root CA",
+        "listPath": "/k8s/ns/${namespace}/core~v1~ConfigMap",
+        "name": "kube-root-ca.crt",
+        "namespace": "${namespace}",
+        "consolePath": "/k8s/ns/${namespace}/core~v1~ConfigMap/kube-root-ca.crt"
+      }
+    }
+  },
+  "steps": [
+    {
+      "id": "open-workloads",
+      "title": "Open Workloads",
+      "description": "Expand Workloads to find the workload resources available in the session namespace.",
+      "target": { "type": "quickStartId", "value": "qs-nav-workloads" },
+      "complete": {
+        "operation": { "type": "activateTarget" },
+        "verify": { "type": "targetAttribute", "attribute": "aria-expanded", "value": "true" }
+      }
+    },
+    {
+      "id": "open-pods",
+      "title": "Open session Pods",
+      "description": "Select Pods. The lesson link scopes the console to the namespace allocated for this Educates session.",
+      "target": { "type": "consoleElement", "id": "navigationLink", "value": "Pods" },
+      "complete": {
+        "operation": { "type": "navigate", "path": "/k8s/ns/${namespace}/core~v1~Pod" },
+        "verify": { "type": "route", "path": "/k8s/ns/${namespace}/core~v1~Pod" }
+      }
+    }
+  ]
+}

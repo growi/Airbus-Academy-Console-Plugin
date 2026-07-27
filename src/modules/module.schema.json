@@ -11,6 +11,34 @@
     "title": { "type": "string", "minLength": 1 },
     "description": { "type": "string", "minLength": 1 },
     "completionText": { "type": "string", "minLength": 1 },
+    "onComplete": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action"],
+          "properties": {
+            "action": { "const": "returnToOpener" },
+            "label": { "type": "string", "minLength": 1 }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["action", "parameter"],
+          "properties": {
+            "action": { "const": "redirect" },
+            "label": { "type": "string", "minLength": 1 },
+            "parameter": { "const": "redirectUri" }
+          }
+        }
+      ]
+    },
+    "parameters": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": { "enum": ["namespace", "redirectUri"] }
+    },
     "context": {
       "type": "object",
       "additionalProperties": false,
