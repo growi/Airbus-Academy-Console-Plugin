@@ -5,6 +5,7 @@ import test from 'node:test';
 import {
   activeNamespaceParameters,
   isAllowedReturnUrl,
+  portalCatalogUrl,
   resolveLab,
   sanitizeLabParameters
 } from '../../src/modules/labContent.ts';
@@ -98,4 +99,19 @@ test('returnUrl is honoured only for the configured portal origin', () => {
   assert.ok(!isAllowedReturnUrl('//evil.example.com', portal));
   assert.ok(!isAllowedReturnUrl(`${portal}/labs`, '')); // no portal configured
   assert.ok(!isAllowedReturnUrl('', portal));
+});
+
+test('the catalog link preselects the portal filter for console labs', () => {
+  assert.equal(
+    portalCatalogUrl('https://academy.apps.example.com'),
+    'https://academy.apps.example.com/?format=console'
+  );
+  // An existing query string is kept; an existing format is replaced, not duplicated.
+  assert.equal(
+    portalCatalogUrl('https://academy.example.com/?track=console&format=terminal'),
+    'https://academy.example.com/?track=console&format=console'
+  );
+  // A portalUrl the settings got wrong still yields a usable link.
+  assert.equal(portalCatalogUrl('not a url'), 'not a url');
+  assert.equal(portalCatalogUrl(''), '');
 });

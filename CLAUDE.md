@@ -132,11 +132,14 @@ Portal-side code: `portal/consolelab.py`, `k8sclient.ensure_lab_access`, `app.py
 | ArgoCD "expected string, got 0" | `expires`/`orphaned` must match `^\d+(s|m|h)$` **and** be quoted; a unitless value breaks the diff for the whole app |
 | Helm fails on a lab file | `{{ }}` in the lab (use `<<>>`) — including inside a YAML comment |
 | Pod path never resolves | a Deployment's pod name has a generated suffix; hidden labs create a bare Pod with a fixed name |
+| `BuildPodEvicted` on an in-cluster build | CRC's VM disk is near full — prune images or use `./build.sh`, which builds on the workstation |
+| Image pushed but the pod cannot pull it | single-architecture push to a cluster of the other architecture (`no image found in image index`); `build.sh` pushes both unless `PLATFORMS` says otherwise |
 
 ## Working here
 
 ```bash
-bin/pluginctl deploy ocp-4.22          # CRC is 4.22; assembles, builds in-cluster, rolls out
+./build.sh --rollout                   # build ocp-4.22 locally, push to ghcr, restart the plugin
+bin/pluginctl deploy ocp-4.22          # same thing built in-cluster (needs node disk headroom)
 node --test 'tests/unit/*.test.ts'     # pure logic, no cluster, no deps
 cd tests/e2e && CONSOLE_URL=… CONSOLE_PASSWORD=… npx playwright test --workers=1
 ```
@@ -151,7 +154,7 @@ cd tests/e2e && CONSOLE_URL=… CONSOLE_PASSWORD=… npx playwright test --worke
   reproduces a real portal launch (wrong project selected first → Finish returns to the portal).
 - `hidden-labs.spec.ts` covers EVERY hidden lab generically: it reads each ConsoleLab CR from the
   cluster through the console's k8s proxy and performs the learner action for every step, so a
-  new lab needs no new spec — add its name to `ACADEMY_HIDDEN_LABS` (default: the core-track
+  new lab needs no new spec — add its name to `ACADEMY_HIDDEN_LABS` (default: the console-track
   u-series). It asserts each target exists on the page the previous step ended on and that the
   lab advances without Continue. Needs the labs' namespaces to exist (`<lab>-01`, the
   portal-less deploy convention — override with `ACADEMY_NS_SUFFIX`).
@@ -162,4 +165,4 @@ Use the **`airbus-educates-console-tour-authoring`** skill in the Airbus-Educate
 carries the naming conventions, the voice, the CRD contract, the portal pairing, and the step
 depth rule: every step gives the job, the reason, and the CLI equivalent — never a bare
 "click here". Reference implementation:
-`../Airbus-Educates/workshops-monorepo/tracks/core-track/lab-u01-container-access/`.
+`../Airbus-Educates/workshops-monorepo/tracks/console-track/lab-u01-container-access/`.

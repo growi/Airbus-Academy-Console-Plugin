@@ -9,6 +9,7 @@ import type { AcademySettings, ConsoleLabResource } from './types';
 export {
   activeNamespaceParameters,
   isAllowedReturnUrl,
+  portalCatalogUrl,
   resolveLab,
   sanitizeLabParameters,
   type ResolvedLab

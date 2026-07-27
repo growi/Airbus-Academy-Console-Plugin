@@ -94,6 +94,25 @@ export const resolveLab = (
 };
 
 /**
+ * The catalog link shown under the lab list. The portal's catalog reads `?format=` and
+ * preselects its own lab-format filter, so a learner who follows this link from inside the
+ * console lands on the console labs rather than on the whole catalogue — the terminal labs
+ * are not what someone already in the console is looking for.
+ *
+ * Anything unparseable is returned unchanged: a bad portalUrl is the settings' problem, and a
+ * link that cannot be decorated is still better than no link.
+ */
+export const portalCatalogUrl = (portalUrl: string, format = 'console') => {
+  try {
+    const url = new URL(portalUrl);
+    url.searchParams.set('format', format);
+    return url.toString();
+  } catch {
+    return portalUrl;
+  }
+};
+
+/**
  * A returnUrl comes from the launch URL, so it is only honoured when it points at the configured
  * portal origin. Without that check any page could hand the console a link that sends a learner
  * somewhere else at the end of a lab.

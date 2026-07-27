@@ -323,29 +323,33 @@ Build explicitly tagged local container images with Podman:
 bin/pluginctl container-build ocp-4.22
 ```
 
-Inspect the generated cluster resources without applying them:
+### Build and push from your workstation
+
+`bin/pluginctl deploy`/`image-build` build **inside** the cluster, which needs spare ephemeral
+storage on the node — the build pod is evicted without it, which CRC runs into routinely.
+`build.sh` builds with local Docker and pushes to a normal registry, no cluster involved:
 
 ```bash
-bin/pluginctl render ocp-4.22
+./build.sh              # default target ocp-4.22 → ghcr.io/rummens/dcs-academy-console-plugin:0.1.0-ocp4.22
+./build.sh ocp-4.20     # another target
+./build.sh --all        # every target
+./build.sh --no-push    # build only
+./build.sh --rollout    # ...and restart the deployment (the one step that needs oc)
+./build.sh selftest     # pure-logic asserts, no cluster
+REGISTRY_BASE=quay.io/acme IMAGE_NAME=plugin ./build.sh
 ```
 
-Deploy the one target matching the cluster version:
+The tag comes from the target's own `targets/<target>/target.env`, so the chart, the ArgoCD
+application and this script cannot disagree about it; `DEFAULT_TARGET` picks which one a bare
+`./build.sh` builds. Registry credentials are whatever `docker login` already holds. Images are
+`linux/amd64,linux/arm64` unless `PLATFORMS` says otherwise, because a single-architecture push
+fails the pull on the other with `no image found in image index`.
 
-```bash
-bin/pluginctl deploy ocp-4.22
-```
-
-The deploy command installs the Helm chart with `build.enabled=true` and the target's image tag,
-assembles the isolated binary build context, starts the OpenShift build, and waits for the
-rollout. The deployment has an ImageStream trigger, so the explicitly tagged successful build
-rolls out by itself. Any further argument is passed straight to `helm`:
-
-```bash
-bin/pluginctl deploy ocp-4.22 --set academySettings.create=true \
-  --set academySettings.portalUrl=https://academy.apps.example.com
-```
-
-Lab content comes from the workshops monorepo's ArgoCD application, not from this repository.
+Pushing into a **cluster's own internal registry** — the route host plus the plugin namespace,
+which is what the chart deploys from when `image.repository` is empty — is handled as a special
+case: it logs in with your `oc` token, builds for the cluster's node architecture only, and
+pushes through the Docker daemon, because a CRC route resolves to `127.0.0.1` and buildx's own
+build container cannot reach that.
 
 ## Deploy with Helm
 

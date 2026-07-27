@@ -22,7 +22,12 @@ import {
 import { type FC, useMemo, useState } from 'react';
 
 import { useGuidance } from '../guidance/GuidanceContext';
-import { activeNamespaceParameters, resolveLab, useConsoleLabs } from '../modules/labs';
+import {
+  activeNamespaceParameters,
+  portalCatalogUrl,
+  resolveLab,
+  useConsoleLabs
+} from '../modules/labs';
 import './GuidancePage.css';
 
 const GuidancePage: FC = () => {
@@ -152,7 +157,11 @@ const GuidancePage: FC = () => {
       {guidance.settings.portalUrl ? (
         <PageSection>
           <Content component="p" className="academy-tour-catalog__portal">
-            <a href={guidance.settings.portalUrl} rel="noreferrer noopener" target="_blank">
+            <a
+              href={portalCatalogUrl(guidance.settings.portalUrl)}
+              rel="noreferrer noopener"
+              target="_blank"
+            >
               {guidance.settings.portalLinkText}
             </a>
           </Content>

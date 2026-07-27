@@ -17,7 +17,7 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
  *   npx playwright test specs/hidden-labs.spec.ts
  *
  * Env:
- *   ACADEMY_HIDDEN_LABS   comma-separated lab names (default: the core-track u-series)
+ *   ACADEMY_HIDDEN_LABS   comma-separated lab names (default: the console-track u-series)
  *   ACADEMY_NS_SUFFIX     session-namespace suffix (default `-01`, the portal-less convention)
  */
 const LABS = (process.env.ACADEMY_HIDDEN_LABS ??
