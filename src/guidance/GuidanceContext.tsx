@@ -914,6 +914,21 @@ const GuidanceController: FC<{ value: GuidanceValue }> = ({ value }) => {
             ? (value.returnUrl ? 'Finish and return to the Academy' : 'Finish')
             : 'Stop'}
         </button>
+        {/* Stop only dismisses the guidance — the learner is then loose in the console with
+            no way back, and had to terminate the session to escape. An explicit exit is the
+            way out of an unfinished lab. */}
+        {!value.completed && value.returnUrl && (
+          <button
+            type="button"
+            className="academy-guidance__secondary"
+            onClick={() => {
+              value.stop();
+              if (value.returnUrl) window.location.assign(value.returnUrl);
+            }}
+          >
+            Exit lab
+          </button>
+        )}
       </div>
     </aside>
   );

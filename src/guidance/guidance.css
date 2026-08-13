@@ -1,9 +1,9 @@
 .academy-guidance__spotlight {
-  /* Three slow pulses, then a steady ring. The pulse says "this one, over here" when a step
-     starts; a learner reading the box does not need it flashing at them while they read, so
-     it breathes over six seconds rather than blinking. The element is keyed on the step, so
-     each new step pulses again. */
-  animation: academy-guidance-pulse 6s ease-in-out 3;
+  /* One slow pulse, then a steady ring. The pulse says "this one, over here" when a step
+     starts; repeating it kept pulling the eye back while the learner was reading, which came
+     back as feedback about the blue animation being distracting. The element is keyed on the
+     step, so each new step pulses once again. */
+  animation: academy-guidance-pulse 6s ease-in-out 1;
   border: 3px solid var(--pf-t--global--color--brand--default, #06c);
   border-radius: 6px;
   box-shadow: 0 0 0 9999px rgb(0 0 0 / 20%);
